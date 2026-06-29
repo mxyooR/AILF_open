@@ -1,0 +1,63 @@
+# =============================================================================
+# AILF Frontend — Dockerfile
+# React 前端服务 (生产构建 + Nginx)
+# =============================================================================
+FROM node:18-alpine AS builder
+
+WORKDIR /build
+
+# 安装 pnpm
+RUN corepack enable && corepack prepare pnpm@8 --activate
+
+# 复制依赖声明
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY frontend/package.json ./frontend/
+
+# 安装依赖 (只需 frontend 项目)
+RUN cd frontend && pnpm install --frozen-lockfile --ignore-scripts
+
+# 复制前端源码
+COPY frontend/ ./frontend/
+
+# 构建生产版本
+RUN cd frontend && pnpm build
+
+# =============================================================================
+FROM nginx:alpine AS runtime
+
+# Nginx 配置: SPA 路由回退
+COPY <<EOF /etc/nginx/conf.d/default.conf
+server {
+    listen       3000;
+    server_name  localhost;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # API 反向代理到后端
+    location /api/ {
+        proxy_pass http://backend:5000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # SPA 路由 — 所有非文件请求回退到 index.html
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # 静态资源缓存
+    location /static/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+
+COPY --from=builder /build/frontend/build /usr/share/nginx/html
+
+EXPOSE 3000
+
+CMD ["nginx", "-g", "daemon off;"]

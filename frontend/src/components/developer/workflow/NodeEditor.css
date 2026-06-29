@@ -1,0 +1,276 @@
+/* 节点编辑器样式 - Apple风格设计 */
+
+.node-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-form {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+/* 配置区域 */
+.config-section {
+  margin-bottom: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.config-section .ant-card-head {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 8px 16px;
+  min-height: auto;
+}
+
+.config-section .ant-card-head-title {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.config-section .ant-card-body {
+  padding: 16px;
+  background: #ffffff;
+}
+
+/* 表单项样式 */
+.editor-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.editor-form .ant-form-item-label > label {
+  font-weight: 500;
+  color: #1d1d1f;
+  font-size: 13px;
+}
+
+.editor-form .ant-input,
+.editor-form .ant-input-number,
+.editor-form .ant-select-selector,
+.editor-form .ant-input-affix-wrapper {
+  border: 1.5px solid #e1e5e9;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.editor-form .ant-input:focus,
+.editor-form .ant-input-number:focus,
+.editor-form .ant-select-selector:focus,
+.editor-form .ant-input-affix-wrapper:focus,
+.editor-form .ant-input-focused,
+.editor-form .ant-input-number-focused,
+.editor-form .ant-select-focused .ant-select-selector,
+.editor-form .ant-input-affix-wrapper-focused {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.editor-form .ant-input:hover,
+.editor-form .ant-input-number:hover,
+.editor-form .ant-select-selector:hover,
+.editor-form .ant-input-affix-wrapper:hover {
+  border-color: #007aff;
+}
+
+/* 文本域样式 */
+.editor-form .ant-input {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.editor-form textarea.ant-input {
+  resize: vertical;
+  min-height: 60px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+
+/* 语法提示 */
+.syntax-tip {
+  margin-top: 8px;
+  border-radius: 6px;
+  border: 1px solid #e1e5e9;
+}
+
+.syntax-tip .ant-alert-message {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.syntax-tip .ant-alert-description {
+  font-size: 11px;
+  color: #86868b;
+}
+
+/* 操作按钮区域 */
+.editor-actions {
+  padding: 16px 0 0;
+  border-top: 1px solid #e1e5e9;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.editor-actions .ant-btn {
+  border-radius: 6px;
+  font-weight: 500;
+  height: 36px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-actions .ant-btn-primary {
+  background: #007aff;
+  border-color: #007aff;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2);
+}
+
+.editor-actions .ant-btn-primary:hover {
+  background: #0051d2;
+  border-color: #0051d2;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.editor-actions .ant-btn:not(.ant-btn-primary) {
+  background: #f8f9fa;
+  border-color: #e1e5e9;
+  color: #1d1d1f;
+}
+
+.editor-actions .ant-btn:not(.ant-btn-primary):hover {
+  background: #e1e5e9;
+  border-color: #d1d5db;
+}
+
+/* JSON编辑器样式 */
+.editor-form textarea[placeholder*="JSON"],
+.editor-form textarea[placeholder*="json"] {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #f8f9fa;
+  border: 1.5px solid #e1e5e9;
+}
+
+.editor-form textarea[placeholder*="JSON"]:focus,
+.editor-form textarea[placeholder*="json"]:focus {
+  background: #ffffff;
+}
+
+/* 表单验证样式 */
+.editor-form .ant-form-item-has-error .ant-input,
+.editor-form .ant-form-item-has-error .ant-input-number,
+.editor-form .ant-form-item-has-error .ant-select-selector,
+.editor-form .ant-form-item-has-error .ant-input-affix-wrapper {
+  border-color: #ff3b30;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.1);
+}
+
+.editor-form .ant-form-item-explain-error {
+  font-size: 11px;
+  color: #ff3b30;
+  margin-top: 4px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .config-section .ant-card-body {
+    padding: 12px;
+  }
+  
+  .editor-form .ant-form-item {
+    margin-bottom: 12px;
+  }
+  
+  .editor-actions {
+    padding: 12px 0 0;
+  }
+  
+  .editor-actions .ant-btn {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
+
+/* 滚动条样式 */
+.editor-form::-webkit-scrollbar {
+  width: 6px;
+}
+
+.editor-form::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 3px;
+}
+
+.editor-form::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.editor-form::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .config-section {
+    border-color: #38383a;
+    background: #1c1c1e;
+  }
+  
+  .config-section .ant-card-head {
+    background: linear-gradient(135deg, #2c2c2e 0%, #1c1c1e 100%);
+    border-bottom-color: #38383a;
+  }
+  
+  .config-section .ant-card-head-title {
+    color: #ffffff;
+  }
+  
+  .config-section .ant-card-body {
+    background: #1c1c1e;
+  }
+  
+  .editor-form .ant-form-item-label > label {
+    color: #ffffff;
+  }
+  
+  .editor-form .ant-input,
+  .editor-form .ant-input-number,
+  .editor-form .ant-select-selector,
+  .editor-form .ant-input-affix-wrapper {
+    background: #2c2c2e;
+    border-color: #38383a;
+    color: #ffffff;
+  }
+  
+  .editor-form textarea[placeholder*="JSON"],
+  .editor-form textarea[placeholder*="json"] {
+    background: #2c2c2e;
+  }
+  
+  .syntax-tip {
+    background: #2c2c2e;
+    border-color: #38383a;
+  }
+  
+  .editor-actions {
+    border-top-color: #38383a;
+  }
+  
+  .editor-actions .ant-btn:not(.ant-btn-primary) {
+    background: #2c2c2e;
+    border-color: #38383a;
+    color: #ffffff;
+  }
+} 

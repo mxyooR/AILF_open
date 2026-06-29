@@ -1,0 +1,36 @@
+{
+  "type": "page",
+  "title": "功能说明",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "你可以直接输入功能名称或描述来发起操作，下面是当前用户的权限范围。",
+      "showIcon": true
+    },
+    {
+      "type": "panel",
+      "title": "当前场景",
+      "body": [
+        { "type": "tpl", "tpl": "场景名称：{{ scenario_name }}" },
+        { "type": "tpl", "tpl": "业务领域：{{ business_domain }}" },
+        { "type": "tpl", "tpl": "目标用户：{{ target_users_text }}" },
+        { "type": "tpl", "tpl": "场景描述：{{ scenario_desc }}" }
+      ]
+    },
+    {
+      "type": "panel",
+      "title": "当前用户权限（前10条）",
+      "body": [
+        { "type": "tpl", "tpl": {{ features_html | tojson }} }
+      ]
+    },
+    {
+      "type": "panel",
+      "title": "示例指令",
+      "body": [
+        { "type": "tpl", "tpl": "比如：{{ example_text }}" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,505 @@
+/* API路由管理步骤样式 - 统一简约设计 */
+
+.api-route-step {
+  padding: 0;
+  background: transparent;
+  min-height: auto;
+  width: 100%;
+}
+
+/* 修复表格列宽问题 - 让表格左右拉满 */
+.api-route-step .unified-table {
+  width: 100%;
+}
+
+.api-route-step .unified-table .ant-table {
+  table-layout: auto;
+  width: 100%;
+}
+
+.api-route-step .unified-table .ant-table-container {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+.api-route-step .unified-table .ant-table-thead > tr > th,
+.api-route-step .unified-table .ant-table-tbody > tr > td {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: top;
+}
+
+/* 表格单元格样式 */
+.api-route-step .api-info-cell {
+  min-width: 200px;
+  max-width: 220px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.api-route-step .endpoint-cell {
+  min-width: 160px;
+  max-width: 160px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.api-route-step .statistics-cell {
+  min-width: 120px;
+}
+
+.api-route-step .ant-table-tbody .ant-table-cell {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* 步骤头部 */
+.api-route-step .unified-card--header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.api-route-step .unified-card--header .ant-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.step-title {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.step-icon {
+  font-size: 36px;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
+  padding: 16px;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.step-title h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1d1d1f;
+  letter-spacing: -0.5px;
+}
+
+.step-title p {
+  margin: 6px 0 0 0;
+  color: #86868b;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.step-actions {
+  display: flex;
+  gap: 16px;
+}
+
+/* 统计卡片 */
+.step-statistics {
+  margin-bottom: 32px;
+  display: flex;
+  gap: 16px;
+}
+
+.step-statistics .stats-card {
+  flex: 1;
+}
+
+.step-statistics .ant-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: none;
+}
+
+.step-statistics .ant-statistic-title {
+  color: #86868b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.step-statistics .ant-statistic-content {
+  color: #1d1d1f;
+  font-weight: 600;
+}
+
+/* 筛选器 */
+.step-filters {
+  margin-bottom: 24px;
+}
+
+.step-filters .ant-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: none;
+}
+
+/* 内容区域 */
+.step-content {
+  margin-bottom: 24px;
+}
+
+.step-content .ant-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: none;
+}
+
+/* 表格样式 */
+.api-info-cell {
+  padding: 8px 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.api-name {
+  font-weight: 600;
+  color: #1d1d1f;
+  font-size: 14px;
+  margin-bottom: 4px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.api-id {
+  font-size: 12px;
+  color: #86868b;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  margin-bottom: 4px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.api-description {
+  font-size: 12px;
+  color: #86868b;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-cell {
+  padding: 8px 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-method {
+  margin-bottom: 4px;
+}
+
+.endpoint-path {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  background: #f5f5f7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #1d1d1f;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.statistics-cell {
+  padding: 8px 0;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.stat-label {
+  color: #86868b;
+}
+
+.stat-value {
+  color: #1d1d1f;
+  font-weight: 500;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+/* 步骤底部 */
+.step-footer {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* 模态框样式 */
+.api-route-modal .ant-modal-content {
+  border-radius: 12px;
+}
+
+.api-route-modal .ant-modal-header {
+  border-radius: 12px 12px 0 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.api-route-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .step-statistics .ant-col {
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .api-route-step {
+    padding: 16px;
+  }
+  
+  .step-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .step-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .step-statistics .ant-col {
+    span: 12 !important;
+  }
+  
+  .step-filters .ant-col {
+    margin-bottom: 12px;
+  }
+}
+
+/* 健康状态指示器 */
+.health-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.health-indicator.healthy {
+  color: #52c41a;
+}
+
+.health-indicator.warning {
+  color: #faad14;
+}
+
+.health-indicator.unhealthy {
+  color: #f5222d;
+}
+
+/* 标签样式优化 */
+.ant-tag {
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+}
+
+/* 按钮样式优化 */
+.ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.ant-btn-primary {
+  background: #007aff;
+  border-color: #007aff;
+}
+
+.ant-btn-primary:hover {
+  background: #0056cc;
+  border-color: #0056cc;
+}
+
+/* 表格样式优化 */
+.ant-table {
+  border-radius: 12px;
+}
+
+.ant-table-thead > tr > th {
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f8f9fa;
+}
+
+/* 分页样式 */
+.ant-pagination {
+  margin-top: 24px;
+}
+
+.ant-pagination-item {
+  border-radius: 6px;
+}
+
+.ant-pagination-item-active {
+  background: #007aff;
+  border-color: #007aff;
+}
+
+.ant-pagination-item-active a {
+  color: white;
+}
+
+/* 输入框样式 */
+.ant-input,
+.ant-select-selector,
+.ant-input-number {
+  border-radius: 8px;
+}
+
+.ant-input:focus,
+.ant-select-focused .ant-select-selector,
+.ant-input-number:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+/* 卡片样式 */
+.ant-card {
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 统计数字样式 */
+.ant-statistic-content-value {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 600;
+}
+
+/* 描述列表样式 */
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #fafafa;
+  font-weight: 500;
+}
+
+/* 时间轴样式 */
+.ant-timeline-item-content {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 代码块样式 */
+pre {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+/* 空状态样式 */
+.ant-empty {
+  padding: 40px 0;
+}
+
+.ant-empty-description {
+  color: #86868b;
+}
+
+/* 加载状态 */
+.ant-spin-container {
+  min-height: 200px;
+}
+
+/* 工具提示样式 */
+.ant-tooltip-inner {
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* 消息提示样式 */
+.ant-message {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ant-message-notice-content {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 模态框确认样式 */
+.ant-modal-confirm .ant-modal-content {
+  border-radius: 12px;
+}
+
+.ant-modal-confirm .ant-modal-body {
+  padding: 24px;
+}
+
+/* 进度条样式 */
+.ant-progress-line {
+  border-radius: 4px;
+}
+
+.ant-progress-bg {
+  border-radius: 4px;
+}
+
+/* 警告框样式 */
+.ant-alert {
+  border-radius: 8px;
+  border: none;
+}
+
+.ant-alert-success {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+}
+
+.ant-alert-warning {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+}
+
+.ant-alert-error {
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+}
+.actions-cell {
+  white-space: nowrap;
+}

@@ -1,0 +1,108 @@
+body, html {
+  min-height: 100vh !important;
+  height: auto !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  /* 基础背景，不带呼吸动画 */
+  background-image:
+    /* Top Purple Accent */
+    radial-gradient(ellipse 35% 60% at 75% 15%, rgba(138, 43, 226, 0.4), transparent 65%),
+    /* Middle Green/Cyan Glow - Enhanced */
+    radial-gradient(ellipse 55% 85% at 50% 45%, rgba(70, 200, 190, 0.6), transparent 75%),
+    /* Left Red/Pink Glow - Enhanced */
+    radial-gradient(ellipse 45% 75% at 15% 35%, rgba(179, 58, 91, 0.65), transparent 70%),
+    /* Right Blue Glow - Enhanced */
+    radial-gradient(ellipse 45% 75% at 90% 65%, rgba(15, 82, 186, 0.65), transparent 70%),
+    /* Bottom Orange Accent */
+    radial-gradient(ellipse 40% 50% at 25% 85%, rgba(255, 140, 0, 0.35), transparent 60%),
+    /* Center Subtle Purple */
+    radial-gradient(ellipse 60% 40% at 60% 70%, rgba(147, 112, 219, 0.25), transparent 80%),
+    /* Base dark gradient with subtle color shift */
+    linear-gradient(160deg, #1A0A1F 0%, #0F1B2E 50%, #0A1429 100%) !important;
+  background-attachment: fixed !important;
+  background-position: 75% 15%, 50% 45%, 15% 35%, 90% 65%, 25% 85%, 60% 70%, 0% 0%;
+  color: #ffffff !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+
+
+#root {
+    background: transparent !important;
+}
+
+@keyframes enhanced-siri-breathing {
+  0% {
+    background-position:
+      75% 15%,    /* Top Purple */
+      50% 45%,    /* Middle Green/Cyan */
+      15% 35%,    /* Left Red/Pink */
+      90% 65%,    /* Right Blue */
+      25% 85%,    /* Bottom Orange */
+      60% 70%,    /* Center Purple */
+      0% 0%;      /* Base gradient */
+    filter: brightness(1) contrast(1) saturate(1);
+  }
+
+  50% {
+    background-position:
+      100% 40%,   /* Top Purple 最大偏移 - 更明显 */
+      80% 20%,    /* Middle Green/Cyan 最大偏移 - 更明显 */
+      40% 10%,    /* Left Red/Pink 最大偏移 - 更明显 */
+      60% 90%,    /* Right Blue 最大偏移 - 更明显 */
+      50% 60%,    /* Bottom Orange 最大偏移 - 更明显 */
+      30% 95%,    /* Center Purple 最大偏移 - 更明显 */
+      0% 0%;
+    filter: brightness(1.08) contrast(1.04) saturate(1.15);
+  }
+
+
+
+  100% {
+    background-position:
+      75% 15%,    /* Top Purple 回到原位 */
+      50% 45%,    /* Middle Green/Cyan 回到原位 */
+      15% 35%,    /* Left Red/Pink 回到原位 */
+      90% 65%,    /* Right Blue 回到原位 */
+      25% 85%,    /* Bottom Orange 回到原位 */
+      60% 70%,    /* Center Purple 回到原位 */
+      0% 0%;      /* Base gradient */
+    filter: brightness(1) contrast(1) saturate(1);
+  }
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 针对Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.1);
+}

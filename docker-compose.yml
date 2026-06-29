@@ -1,0 +1,143 @@
+# =============================================================================
+# AILF — Docker Compose 编排文件
+# 一键启动所有服务: docker-compose up -d
+# =============================================================================
+
+services:
+  # ========================================
+  # MySQL 数据库
+  # ========================================
+  mysql:
+    image: mysql:8.0
+    container_name: ailf-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+      MYSQL_DATABASE: ${DB_NAME:-ailf_db}
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Redis (Broker / 缓存 / 会话存储)
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: ailf-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # FastAPI 后端
+  # ========================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ailf-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # 数据库
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_NAME: ${DB_NAME:-ailf_db}
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_PASSWORD: ""
+      # Celery
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # JWT
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      # 开发者密码
+      DEVELOPER_PASSWORD: ${DEVELOPER_PASSWORD:-dev_password_change_me}
+      # 调试
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "5000:5000"
+
+  # ========================================
+  # React 前端
+  # ========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ailf-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    # 开发模式: 使用 pnpm dev
+    # 如需开发模式，取消注释以下配置并注释 build 部分:
+    # build: null
+    # image: node:18-alpine
+    # working_dir: /app/frontend
+    # command: sh -c "corepack enable && corepack prepare pnpm@8 --activate && pnpm install && pnpm dev"
+    # volumes:
+    #   - ./frontend:/app/frontend
+    #   - ./pnpm-workspace.yaml:/app/pnpm-workspace.yaml
+    #   - ./package.json:/app/package.json
+
+  # ========================================
+  # Celery Worker (AI 推理)
+  # ========================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: ailf-worker
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      # Redis (Broker)
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # 数据库 (部分任务需要)
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_NAME: ${DB_NAME:-ailf_db}
+    # GPU 支持 (如果需要)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  mysql_data:
+  redis_data:

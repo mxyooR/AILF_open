@@ -1,0 +1,380 @@
+/* 
+ * Component-specific styles for DeveloperConfigMain
+ * Inherits variables from developer-config.css
+ */
+
+/* --- Global Overrides & Utilities --- */
+
+.developer-config-main .ant-btn {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  font-weight: 500;
+}
+
+.developer-config-main .ant-card {
+  border-radius: var(--radius-lg);
+}
+
+/* --- Layout --- */
+
+/* padding handled in developer-config.css */
+
+/* --- Step Placeholder --- */
+
+.step-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.placeholder-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  color: var(--system-blue);
+  margin-bottom: 24px;
+}
+
+.placeholder-title {
+  margin: 0 0 16px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1d1d1f;
+  letter-spacing: -0.5px;
+  font-family: var(--font-display);
+}
+
+.placeholder-description {
+  margin: 0 0 32px 0;
+  font-size: 16px;
+  color: var(--system-gray);
+  line-height: 1.5;
+}
+
+.placeholder-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--bg-secondary);
+  padding: 24px;
+  border-radius: var(--radius-lg);
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  color: #1d1d1f;
+}
+
+.feature-item .anticon {
+  font-size: 16px;
+  color: var(--system-green);
+}
+
+/* --- Template Selection Step --- */
+
+.template-selection-step {
+  min-height: calc(100vh - 200px);
+}
+
+.template-selection-step .template-card {
+  transition: all 0.3s var(--ease-default);
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.template-selection-step .template-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--system-gray-4);
+}
+
+.template-selection-step .template-card.selected {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 2px var(--system-blue), var(--shadow-md);
+  border-color: transparent;
+}
+
+.template-selection-step .ant-card-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+
+.template-selection-step h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.template-selection-step .ant-tag {
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--system-gray);
+}
+
+/* --- Scenario Config Step --- */
+
+.scenario-config-step {
+  min-height: calc(100vh - 200px);
+}
+
+.scenario-config-step .ant-card {
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg);
+  margin-bottom: 24px;
+}
+
+.scenario-config-step .ant-card-head {
+  border-bottom: 1px solid var(--border-light);
+  padding: 20px 24px;
+}
+
+.scenario-config-step .ant-card-head-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.scenario-type-card {
+  border: 1px solid var(--border-light);
+  background: #ffffff;
+  transition: all 0.3s var(--ease-default);
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.scenario-type-card:hover {
+  border-color: var(--system-gray-3);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.scenario-config-step .selected-type {
+  border: 2px solid var(--system-blue) !important;
+  background: rgba(0, 122, 255, 0.03) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.scenario-type-card h5 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  color: #1d1d1f;
+}
+
+/* --- Entity Modeling Step --- */
+
+.entity-modeling-step {
+  background: transparent;
+}
+
+.entity-modeling-step .ant-table {
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.entity-modeling-step .ant-table-thead > tr > th {
+  background: var(--bg-secondary);
+  color: var(--system-gray);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.entity-modeling-step .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* --- Workflow Design Step --- */
+
+.workflow-design-step {
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.workflow-design-step .ant-statistic-title {
+  color: var(--system-gray);
+  font-size: 13px;
+}
+
+.workflow-design-step .ant-statistic-content {
+  color: #1d1d1f;
+  font-family: var(--font-display);
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 1024px) {
+  .config-main {
+    flex-direction: column;
+  }
+
+  .steps-sidebar {
+    width: 100%;
+    min-width: auto;
+    position: relative;
+    top: 0;
+    margin-bottom: 24px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .steps-container {
+    padding: 16px;
+  }
+
+  .steps-list {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 16px;
+    padding-bottom: 12px;
+    /* Hide vertical line in horizontal mode */
+  }
+  
+  .steps-list::before {
+    display: none;
+  }
+
+  .step-item {
+    min-width: 200px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-light);
+  }
+}
+
+/* --- Redesigned Header (Apple Style) --- */
+.config-header {
+  height: 64px;
+  width: 100%;
+  display: flex;
+  justify-content: center; /* Center the inner content */
+  background: rgba(255, 255, 255, 0.7); /* More transparent */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03); /* Ultra subtle border */
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 0; /* Remove padding from wrapper */
+}
+
+.header-content {
+  width: 100%;
+  max-width: 1600px; /* Align with .config-main */
+  margin: 0 auto; /* Center horizontally */
+  padding: 0 40px; /* Match .config-main padding */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.main-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: #1D1D1F;
+  margin: 0;
+  line-height: 1;
+}
+
+.header-divider {
+  height: 20px;
+  width: 1px;
+  background: #E5E5EA;
+}
+
+.subtitle {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  color: #86868B;
+  margin: 0; /* Override global text.css margin-bottom */
+  padding: 0;
+  line-height: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-button.ant-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #1D1D1F;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 12px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.action-button.ant-btn:hover {
+  background: #F5F5F7;
+  color: #000000;
+}
+
+.action-button.ant-btn .anticon {
+  font-size: 14px;
+  color: #1D1D1F;
+}
+
+.runtime-monitor-entry-button.ant-btn {
+  height: 42px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 122, 255, 0.18);
+  background: rgba(0, 122, 255, 0.08);
+  color: #005ecf;
+  font-weight: 600;
+}
+
+.runtime-monitor-entry-button.ant-btn:hover {
+  border-color: rgba(0, 122, 255, 0.28);
+  background: rgba(0, 122, 255, 0.14);
+  color: #004ca8;
+}

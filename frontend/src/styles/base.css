@@ -1,0 +1,160 @@
+/* AILF - 基础样式 - Apple HIG Compliant */
+
+/* 全局样式重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Apple 系统原生字体栈 */
+:root {
+  /* Apple 官方系统字体栈 */
+  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  
+  /* Apple 标准色彩 */
+  --color-background-start: #0a0a14;
+  --color-background-mid: #0f1629;
+  --color-accent-pink: #ff2d55;
+  --color-accent-purple: #af52de;
+  --color-accent-blue: #007aff;
+  --color-accent-cyan: #5ac8fa;
+  --color-accent-teal: #64d2ff;
+  --color-accent-green: #30d158;
+}
+
+/* 苹果风格全局样式 */
+html, body {
+  height: 100%;
+  font-family: var(--font-system);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+/* 主容器 - Apple 风格 Mesh Gradient */
+.App {
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-background-start);
+}
+
+/* Mesh Gradient 背景层 - 使用多个巨大的 radial-gradient 叠加 */
+.App::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  
+  /* 多层 radial-gradient - 柔和可见 */
+  background:
+    /* 右上角粉紫色光晕 */
+    radial-gradient(
+      ellipse 80% 60% at 85% 15%,
+      rgba(175, 82, 222, 0.15) 0%,
+      rgba(175, 82, 222, 0.05) 35%,
+      transparent 60%
+    ),
+    /* 左上角玫红色光晕 */
+    radial-gradient(
+      ellipse 70% 50% at 15% 20%,
+      rgba(255, 45, 85, 0.12) 0%,
+      rgba(255, 45, 85, 0.04) 40%,
+      transparent 55%
+    ),
+    /* 中下青蓝色光晕 */
+    radial-gradient(
+      ellipse 90% 70% at 50% 100%,
+      rgba(90, 200, 250, 0.18) 0%,
+      rgba(100, 210, 255, 0.06) 40%,
+      transparent 60%
+    ),
+    /* 左下绿色光晕 */
+    radial-gradient(
+      ellipse 60% 50% at 10% 90%,
+      rgba(48, 209, 88, 0.1) 0%,
+      rgba(48, 209, 88, 0.03) 45%,
+      transparent 55%
+    ),
+    /* 右侧蓝色光晕 */
+    radial-gradient(
+      ellipse 50% 80% at 95% 60%,
+      rgba(0, 122, 255, 0.12) 0%,
+      rgba(0, 122, 255, 0.04) 50%,
+      transparent 65%
+    );
+  
+  /* 模糊值 */
+  filter: blur(100px);
+  
+  /* 缓慢流动动画 */
+  animation: meshFlow 30s ease-in-out infinite;
+}
+
+/* 噪点纹理层 - 消除渐变断层（Dithering 抖动） */
+.App::after {
+  content: '';
+  position: absolute;
+  /* 扩大范围以覆盖动画移动 */
+  inset: -20%;
+  z-index: 1;
+  
+  /* 高频细腻噪点 */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  
+  /* 噪点强度 - 增强到 12% */
+  opacity: 0.12;
+  
+  /* 叠加混合 */
+  mix-blend-mode: overlay;
+  
+  /* 防止噪点影响交互 */
+  pointer-events: none;
+  
+  /* 平铺 */
+  background-size: 150px 150px;
+  
+  /* 跟随渐变动画 */
+  animation: meshFlow 30s ease-in-out infinite;
+}
+
+/* Mesh Gradient 流动动画 - 缓慢漂移 */
+@keyframes meshFlow {
+  0% {
+    transform: scale(1) translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.05) translate(2%, -2%) rotate(1deg);
+  }
+  50% {
+    transform: scale(1.1) translate(-2%, 2%) rotate(-1deg);
+  }
+  75% {
+    transform: scale(1.05) translate(1%, 1%) rotate(0.5deg);
+  }
+  100% {
+    transform: scale(1) translate(0, 0) rotate(0deg);
+  }
+}
+
+/* 旧的背景渐变动画 - 保留兼容 */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Ribbon 背景样式 - 禁用默认 Mesh 背景 */
+.ribbon-bg-style.App::before,
+.ribbon-bg-style.App::after {
+  display: none;
+}
+
+.ribbon-bg-style.App {
+  background: transparent;
+}
+

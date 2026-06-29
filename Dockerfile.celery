@@ -1,0 +1,44 @@
+# =============================================================================
+# AILF Celery Worker — Dockerfile
+# AI 推理 Worker (异步任务消费者)
+# =============================================================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# 编译依赖 (PyTorch, sentence-transformers 等需要)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# =============================================================================
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# 运行时依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-libmysqlclient-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从 builder 阶段复制已安装的依赖
+COPY --from=builder /install /usr/local
+
+# 复制后端代码 (Worker 需要访问 app.tasks 模块)
+COPY backend/ ./backend/
+# 复制 Worker 独立代码
+COPY celery_worker/ ./celery_worker/
+# 复制模型文件
+COPY Model/ ./Model/
+
+ENV PYTHONPATH="/app/backend:/app/celery_worker:${PYTHONPATH}" \
+    PYTHONUNBUFFERED=1
+
+# 启动 Worker (默认从 celery_worker 目录启动)
+WORKDIR /app/celery_worker
+
+CMD ["celery", "-A", "celery_app:celery_app", "worker", "--loglevel=info", "--pool=solo", "--concurrency=1"]

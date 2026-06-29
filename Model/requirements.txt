@@ -1,0 +1,48 @@
+# Graph-Augmented LLM 训练依赖
+# ================================
+# 
+# 安装步骤（按顺序执行）：
+#
+# 1. 创建环境
+#    conda create -n ailf python=3.10 -y
+#    conda activate ailf
+#
+# 2. 安装 PyTorch（根据 CUDA 版本选择）
+#    # CUDA 12.1
+#    pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    # CUDA 11.8
+#    pip install torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# 3. 安装 PyG（必须匹配 PyTorch 和 CUDA 版本）
+#    pip install torch-geometric
+#    # CUDA 12.1
+#    pip install pyg-lib torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
+#    # CUDA 11.8
+#    pip install pyg-lib torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
+#
+# 4. 安装其他依赖
+#    pip install -r requirements.txt
+#
+# 5. 国内服务器设置 HuggingFace 镜像
+#    export HF_ENDPOINT=https://hf-mirror.com
+#
+# ================================
+
+# 核心框架（PyTorch 和 PyG 需要单独安装，见上方说明）
+transformers>=4.35.0
+peft>=0.7.0
+bitsandbytes>=0.41.0
+accelerate>=0.24.0
+
+# 数据处理
+datasets>=2.14.0
+numpy>=1.24.0
+pandas>=2.0.0
+pyyaml>=6.0
+
+# 工具
+tqdm>=4.65.0
+tensorboard>=2.15.0
+
+# 可选（实验追踪）
+# wandb>=0.15.0

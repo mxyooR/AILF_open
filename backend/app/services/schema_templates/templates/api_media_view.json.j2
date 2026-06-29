@@ -1,0 +1,86 @@
+{
+  "type": "page",
+  "title": "{{ slot_values.get('page_title','') }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ slot_values.get('user_message','') }}",
+      "showIcon": true
+    },
+    {% if media_direct %}
+    {% if media_kind == "image" %}
+    {
+      "type": "tpl",
+      "tpl": {{ ("<div style='margin-bottom:8px;'>图片预览</div><img src='" ~ media_preview_url ~ "' alt='preview image' style='max-width:100%;max-height:680px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#f8fafc;' /><div style='margin-top:8px;'><a href='" ~ media_url ~ "' target='_blank' rel='noopener noreferrer'>新窗口打开图片</a></div>") | tojson }}
+    }
+    {% elif media_kind == "audio" %}
+    {
+      "type": "tpl",
+      "tpl": {{ ("<div style='margin-bottom:8px;'>音频预览</div><audio controls preload='metadata' src='" ~ media_preview_url ~ "' style='width:100%;'></audio><div style='margin-top:8px;'><a href='" ~ media_url ~ "' target='_blank' rel='noopener noreferrer'>新窗口打开音频</a></div>") | tojson }}
+    }
+    {% elif media_kind == "pdf" %}
+    {
+      "type": "tpl",
+      "tpl": {{ ("<div style='margin-bottom:8px;'>PDF 预览</div><object data='" ~ media_preview_url ~ "' type='application/pdf' style='width:100%;height:680px;border:1px solid #e5e7eb;border-radius:8px;'><iframe src='" ~ media_preview_url ~ "' style='width:100%;height:680px;border:0;'></iframe></object><div style='margin-top:8px;'><a href='" ~ media_url ~ "' target='_blank' rel='noopener noreferrer'>新窗口打开PDF</a></div>") | tojson }}
+    }
+    {% else %}
+    {
+      "type": "tpl",
+      "tpl": {{ ("<div style='margin-bottom:8px;'>文件已就绪</div><div><a href='" ~ media_url ~ "' target='_blank' rel='noopener noreferrer'>点击查看文件</a></div>") | tojson }}
+    }
+    {% endif %}
+    {% else %}
+    {
+      "type": "service",
+      "api": {
+        "method": "{{ api_method | lower }}",
+        "url": "{{ api_url }}",
+        "data": { "&": "$$" },
+        "adaptor": {{ api_adaptor | default('') | tojson }}
+      },
+      "body": [
+        {
+          "type": "alert",
+          "level": "success",
+          "showIcon": true,
+          "body": "${__api_message__|default:\"请求成功\"}",
+          "visibleOn": "this.__api_code__ == 200 || this.__api_message__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>PDF 预览</div><object data='${__api_pdf_preview_url__ || __api_pdf_url__}' type='application/pdf' style='width:100%;height:680px;border:1px solid #e5e7eb;border-radius:8px;'><iframe src='${__api_pdf_preview_url__ || __api_pdf_url__}' style='width:100%;height:680px;border:0;'></iframe></object><div style='margin-top:8px;'><a href='${__api_pdf_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开PDF</a></div>",
+          "visibleOn": "this.__api_pdf_url__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>图片预览</div><img src='${__api_image_preview_url__ || __api_image_url__}' alt='preview image' style='max-width:100%;max-height:680px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#f8fafc;' /><div style='margin-top:8px;'><a href='${__api_image_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开图片</a></div>",
+          "visibleOn": "this.__api_image_url__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>音频预览</div><audio controls preload='metadata' src='${__api_audio_preview_url__ || __api_audio_url__}' style='width:100%;'></audio><div style='margin-top:8px;'><a href='${__api_audio_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开音频</a></div>",
+          "visibleOn": "this.__api_audio_url__"
+        },
+        {
+          "type": "table",
+          "title": "返回字段",
+          "source": "${__api_kv__}",
+          "columns": [
+            {"name": "label", "label": "字段", "type": "text"},
+            {"name": "value", "label": "值", "type": "text"}
+          ],
+          "visibleOn": "this.__api_kv__ && this.__api_kv__.length"
+        },
+        {
+          "type": "alert",
+          "level": "warning",
+          "showIcon": true,
+          "body": "接口返回成功，但未识别到可预览的媒体链接。",
+          "visibleOn": "!this.__api_pdf_url__ && !this.__api_image_url__ && !this.__api_audio_url__"
+        }
+      ]
+    }
+    {% endif %}
+  ]
+}

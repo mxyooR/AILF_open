@@ -1,0 +1,188 @@
+/**
+ * 工作流设计步骤样式 - 统一简约设计
+ */
+
+.workflow-design-step {
+  padding: 0;
+  background: transparent;
+  min-height: 100vh;
+}
+
+/* 步骤头部 */
+.workflow-design-step .step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding: 32px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  border: 1px solid rgba(0, 122, 255, 0.06);
+  box-shadow:
+    0 8px 32px rgba(0, 122, 255, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.workflow-design-step .step-title {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.workflow-design-step .step-icon {
+  font-size: 36px;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
+  padding: 16px;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.workflow-design-step .step-title h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1d1d1f;
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.workflow-design-step .step-title p {
+  margin: 4px 0 0 0;
+  color: #6e6e73;
+  font-size: 16px;
+}
+
+.workflow-design-step .step-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* 工作流列表 */
+.workflow-design-step .workflow-list {
+  margin-bottom: 24px;
+}
+
+.workflow-design-step .workflow-card {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.workflow-design-step .workflow-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.workflow-design-step .workflow-card.selected {
+  border-color: #007aff;
+  box-shadow: 0 8px 32px rgba(0, 122, 255, 0.2);
+}
+
+.workflow-design-step .workflow-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workflow-design-step .node-count {
+  font-size: 12px;
+  color: #6e6e73;
+  font-weight: 500;
+}
+
+/* 工作流设计区域 */
+.workflow-design-step .workflow-design-area {
+  margin-bottom: 24px;
+}
+
+.workflow-design-step .design-canvas {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.workflow-design-step .design-canvas .ant-card-head {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.workflow-design-step .design-canvas .ant-card-head-title {
+  color: #1d1d1f;
+  font-weight: 600;
+}
+
+.workflow-design-step .canvas-placeholder {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workflow-design-step .canvas-placeholder h3 {
+  color: #1d1d1f;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.workflow-design-step .canvas-placeholder p {
+  color: #6e6e73;
+  margin-bottom: 8px;
+}
+
+.workflow-design-step .node-types-preview {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 步骤底部 */
+.workflow-design-step .step-footer {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* 按钮样式 */
+.workflow-design-step .ant-btn-primary {
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workflow-design-step .ant-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.4);
+}
+
+.workflow-design-step .ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workflow-design-step .ant-btn:hover {
+  transform: translateY(-1px);
+}

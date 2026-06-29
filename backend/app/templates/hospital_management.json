@@ -1,0 +1,1440 @@
+{
+  "template_info": {
+    "key": "hospital_management",
+    "name": "医院管理系统",
+    "description": "完整的医院信息管理系统模板",
+    "category": "HEALTHCARE",
+    "difficulty": "INTERMEDIATE",
+    "estimated_setup_time": "45分钟",
+    "version": "1.1.0",
+    "author": "AILF Team",
+    "license": "MIT",
+    "features": [
+      "患者管理",
+      "预约挂号",
+      "医生排班",
+      "病历管理",
+      "药品管理",
+      "收费管理"
+    ],
+    "tags": [
+      "医疗",
+      "管理系统",
+      "预约"
+    ],
+    "created_at": "2024-01-16T00:00:00.000Z",
+    "updated_at": "2024-01-30T00:00:00.000Z",
+    "preview": {
+      "entities": 5,
+      "workflows": 1,
+      "forms": 2,
+      "apis": 4
+    }
+  },
+  "scenario": {
+    "name": "医院管理系统场景",
+    "description": "完整的医院信息管理系统模板",
+    "type": "HEALTHCARE",
+    "config": {
+      "business_domain": "医疗健康",
+      "target_users": [
+        "访客",
+        "医生",
+        "护士",
+        "管理员",
+        "收费员"
+      ],
+      "key_features": [
+        "患者管理",
+        "预约挂号",
+        "医生排班",
+        "病历管理",
+        "药品管理",
+        "收费管理"
+      ],
+      "example_instructions": [
+        "查询患者信息",
+        "预约挂号",
+        "查看今日排班"
+      ],
+      "custom_settings": {}
+    }
+  },
+  "entities": [
+    {
+      "name": "patient",
+      "display_name": "患者",
+      "description": "患者基本信息管理",
+      "icon": "user",
+      "status": "active",
+      "fields": [
+        {
+          "name": "name",
+          "displayName": "姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "maxLength": 50
+          },
+          "options": null
+        },
+        {
+          "name": "id_card",
+          "displayName": "身份证号",
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^[1-9]\\d{5}(18|19|20)\\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\\d{3}[0-9Xx]$"
+          },
+          "options": null
+        },
+        {
+          "name": "phone",
+          "displayName": "联系电话",
+          "type": "phone",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          },
+          "options": null
+        },
+        {
+          "name": "gender",
+          "displayName": "性别",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "男",
+            "女"
+          ]
+        },
+        {
+          "name": "birth_date",
+          "displayName": "出生日期",
+          "type": "date",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "address",
+          "displayName": "地址",
+          "type": "text",
+          "required": false,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "maxLength": 200
+          },
+          "options": null
+        }
+      ]
+    },
+    {
+      "name": "doctor",
+      "display_name": "医生",
+      "description": "医生信息管理",
+      "icon": "medicine-box",
+      "status": "active",
+      "is_role": true,
+      "fields": [
+        {
+          "name": "name",
+          "displayName": "姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "maxLength": 50
+          },
+          "options": null
+        },
+        {
+          "name": "employee_id",
+          "displayName": "工号",
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "department",
+          "displayName": "科室",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "内科",
+            "外科",
+            "儿科",
+            "妇产科",
+            "眼科",
+            "耳鼻喉科",
+            "皮肤科",
+            "骨科"
+          ]
+        },
+        {
+          "name": "title",
+          "displayName": "职称",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "住院医师",
+            "主治医师",
+            "副主任医师",
+            "主任医师"
+          ]
+        },
+        {
+          "name": "phone",
+          "displayName": "联系电话",
+          "type": "phone",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          },
+          "options": null
+        }
+      ]
+    },
+    {
+      "name": "nurse",
+      "display_name": "护士",
+      "description": "护士信息管理",
+      "icon": "user",
+      "status": "active",
+      "is_role": true,
+      "fields": [
+        {
+          "name": "name",
+          "displayName": "姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "maxLength": 50
+          },
+          "options": null
+        },
+        {
+          "name": "employee_id",
+          "displayName": "工号",
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "department",
+          "displayName": "科室",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "内科",
+            "外科",
+            "儿科",
+            "妇产科",
+            "眼科",
+            "耳鼻喉科",
+            "皮肤科",
+            "骨科",
+            "急诊科"
+          ]
+        },
+        {
+          "name": "level",
+          "displayName": "级别",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "护士",
+            "护师",
+            "主管护师",
+            "副主任护师",
+            "主任护师"
+          ]
+        },
+        {
+          "name": "phone",
+          "displayName": "联系电话",
+          "type": "phone",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          },
+          "options": null
+        }
+      ]
+    },
+    {
+      "name": "hospital_admin",
+      "display_name": "医院管理员",
+      "description": "医院管理员角色",
+      "icon": "crown",
+      "status": "active",
+      "is_role": true,
+      "fields": [
+        {
+          "name": "name",
+          "displayName": "姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "maxLength": 50
+          },
+          "options": null
+        },
+        {
+          "name": "employee_id",
+          "displayName": "工号",
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "department",
+          "displayName": "管理部门",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "行政管理",
+            "医务管理",
+            "护理管理",
+            "财务管理",
+            "信息管理"
+          ]
+        },
+        {
+          "name": "position",
+          "displayName": "职位",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "科室主任",
+            "副主任",
+            "科长",
+            "副科长",
+            "主管",
+            "专员"
+          ]
+        },
+        {
+          "name": "phone",
+          "displayName": "联系电话",
+          "type": "phone",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          },
+          "options": null
+        }
+      ]
+    },
+    {
+      "name": "appointment",
+      "display_name": "预约",
+      "description": "患者预约挂号管理",
+      "icon": "calendar",
+      "status": "active",
+      "fields": [
+        {
+          "name": "appointment_no",
+          "displayName": "预约号",
+          "type": "text",
+          "required": true,
+          "unique": true,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "patient_name",
+          "displayName": "患者姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "doctor_name",
+          "displayName": "医生姓名",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "department",
+          "displayName": "科室",
+          "type": "select",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": [
+            "内科",
+            "外科",
+            "儿科",
+            "妇产科",
+            "眼科",
+            "耳鼻喉科",
+            "皮肤科",
+            "骨科"
+          ]
+        },
+        {
+          "name": "appointment_date",
+          "displayName": "预约日期",
+          "type": "date",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": null,
+          "options": null
+        },
+        {
+          "name": "appointment_time",
+          "displayName": "预约时间",
+          "type": "text",
+          "required": true,
+          "unique": false,
+          "defaultValue": null,
+          "validation": {
+            "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "options": null
+        },
+        {
+          "name": "status",
+          "displayName": "状态",
+          "type": "select",
+          "required": false,
+          "unique": false,
+          "defaultValue": "已预约",
+          "validation": null,
+          "options": [
+            "已预约",
+            "已就诊",
+            "已取消",
+            "未到"
+          ]
+        }
+      ]
+    }
+  ],
+  "api_routes": [
+    {
+      "api_id": "patient_create_api",
+      "name": "患者创建API",
+      "endpoint": "/api/v1/patients",
+      "method": "POST",
+      "description": "创建新的患者记录，包含基本信息和联系方式",
+      "auth_required": true,
+      "handler": {
+        "type": "entity_crud",
+        "config": {
+          "entity": "patient",
+          "operation": "create",
+          "allowed_fields": [
+            "name",
+            "id_card",
+            "phone",
+            "gender",
+            "birth_date",
+            "address"
+          ],
+          "validation_rules": {
+            "name": "required|max:50",
+            "id_card": "required|unique:patients,id_card|regex:^[1-9]\\d{5}(18|19|20)\\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\\d{3}[0-9Xx]$",
+            "phone": "required|regex:^1[3-9]\\d{9}$",
+            "gender": "required|in:男,女",
+            "birth_date": "required|date"
+          },
+          "auto_timestamps": true
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "患者姓名",
+          "validation": {
+            "max_length": 50,
+            "min_length": 2
+          }
+        },
+        {
+          "name": "id_card",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "身份证号码",
+          "validation": {
+            "pattern": "^[1-9]\\d{5}(18|19|20)\\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\\d{3}[0-9Xx]$"
+          }
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "联系电话",
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          }
+        },
+        {
+          "name": "gender",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "性别",
+          "validation": {
+            "enum": [
+              "男",
+              "女"
+            ]
+          }
+        },
+        {
+          "name": "birth_date",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "出生日期",
+          "validation": {
+            "format": "date"
+          }
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "location": "body",
+          "required": false,
+          "description": "联系地址",
+          "validation": {
+            "max_length": 200
+          }
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "患者创建成功",
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": 201
+              },
+              "message": {
+                "type": "string",
+                "example": "患者创建成功"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "patient": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "id_card": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "gender": {
+                        "type": "string"
+                      },
+                      "birth_date": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "address": {
+                        "type": "string"
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "datetime"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "请求参数验证失败",
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": 400
+              },
+              "message": {
+                "type": "string",
+                "example": "参数验证失败"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "error_type": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "form_config": {
+        "auto_generate": true,
+        "layout": {
+          "type": "grid",
+          "columns": 2,
+          "spacing": 16
+        },
+        "sections": [
+          {
+            "title": "基本信息",
+            "fields": [
+              "name",
+              "id_card",
+              "gender",
+              "birth_date"
+            ]
+          },
+          {
+            "title": "联系信息",
+            "fields": [
+              "phone",
+              "address"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "api_id": "patient_list_api",
+      "name": "患者列表API",
+      "endpoint": "/api/v1/patients",
+      "method": "GET",
+      "description": "获取患者列表，支持分页和筛选",
+      "auth_required": true,
+      "handler": {
+        "type": "entity_crud",
+        "config": {
+          "entity": "patient",
+          "operation": "list",
+          "allowed_fields": [
+            "name",
+            "id_card",
+            "phone",
+            "gender",
+            "birth_date",
+            "address"
+          ],
+          "default_page_size": 20,
+          "max_page_size": 100,
+          "searchable_fields": [
+            "name",
+            "phone",
+            "id_card"
+          ],
+          "sortable_fields": [
+            "name",
+            "birth_date",
+            "created_at"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "page",
+          "type": "integer",
+          "location": "query",
+          "required": false,
+          "description": "页码，默认1",
+          "validation": {
+            "min": 1
+          }
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "location": "query",
+          "required": false,
+          "description": "每页数量，默认20，最大100",
+          "validation": {
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "name": "search",
+          "type": "string",
+          "location": "query",
+          "required": false,
+          "description": "搜索关键词（姓名、电话、身份证）"
+        },
+        {
+          "name": "gender",
+          "type": "string",
+          "location": "query",
+          "required": false,
+          "description": "性别筛选",
+          "validation": {
+            "enum": [
+              "男",
+              "女"
+            ]
+          }
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "获取患者列表成功",
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": 200
+              },
+              "message": {
+                "type": "string",
+                "example": "获取患者列表成功"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "patients": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "gender": {
+                          "type": "string"
+                        },
+                        "birth_date": {
+                          "type": "string",
+                          "format": "date"
+                        }
+                      }
+                    }
+                  },
+                  "pagination": {
+                    "type": "object",
+                    "properties": {
+                      "page": {
+                        "type": "integer"
+                      },
+                      "limit": {
+                        "type": "integer"
+                      },
+                      "total": {
+                        "type": "integer"
+                      },
+                      "pages": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "api_id": "doctor_create_api",
+      "name": "医生创建API",
+      "endpoint": "/api/v1/doctors",
+      "method": "POST",
+      "description": "创建新的医生记录，包含基本信息和科室信息",
+      "auth_required": true,
+      "handler": {
+        "type": "entity_crud",
+        "config": {
+          "entity": "doctor",
+          "operation": "create",
+          "allowed_fields": [
+            "name",
+            "employee_id",
+            "department",
+            "title",
+            "phone"
+          ],
+          "validation_rules": {
+            "name": "required|max:50",
+            "employee_id": "required|unique:doctors,employee_id",
+            "department": "required|in:内科,外科,儿科,妇产科,眼科,耳鼻喉科,皮肤科,骨科",
+            "title": "required|in:住院医师,主治医师,副主任医师,主任医师",
+            "phone": "required|regex:^1[3-9]\\d{9}$"
+          },
+          "auto_timestamps": true
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "医生姓名",
+          "validation": {
+            "max_length": 50,
+            "min_length": 2
+          }
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "工号",
+          "validation": {
+            "max_length": 20
+          }
+        },
+        {
+          "name": "department",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "科室",
+          "validation": {
+            "enum": [
+              "内科",
+              "外科",
+              "儿科",
+              "妇产科",
+              "眼科",
+              "耳鼻喉科",
+              "皮肤科",
+              "骨科"
+            ]
+          }
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "职称",
+          "validation": {
+            "enum": [
+              "住院医师",
+              "主治医师",
+              "副主任医师",
+              "主任医师"
+            ]
+          }
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "联系电话",
+          "validation": {
+            "pattern": "^1[3-9]\\d{9}$"
+          }
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "医生创建成功",
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": 201
+              },
+              "message": {
+                "type": "string",
+                "example": "医生创建成功"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "doctor": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "employee_id": {
+                        "type": "string"
+                      },
+                      "department": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "datetime"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "form_config": {
+        "auto_generate": true,
+        "layout": {
+          "type": "grid",
+          "columns": 2,
+          "spacing": 16
+        },
+        "sections": [
+          {
+            "title": "基本信息",
+            "fields": [
+              "name",
+              "employee_id",
+              "phone"
+            ]
+          },
+          {
+            "title": "职业信息",
+            "fields": [
+              "department",
+              "title"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "api_id": "appointment_create_api",
+      "name": "预约创建API",
+      "endpoint": "/api/v1/appointments",
+      "method": "POST",
+      "description": "创建新的预约记录，支持患者预约挂号",
+      "auth_required": true,
+      "handler": {
+        "type": "entity_crud",
+        "config": {
+          "entity": "appointment",
+          "operation": "create",
+          "allowed_fields": [
+            "appointment_no",
+            "patient_name",
+            "doctor_name",
+            "department",
+            "appointment_date",
+            "appointment_time",
+            "status"
+          ],
+          "validation_rules": {
+            "appointment_no": "required|unique:appointments,appointment_no",
+            "patient_name": "required|max:50",
+            "doctor_name": "required|max:50",
+            "department": "required|in:内科,外科,儿科,妇产科,眼科,耳鼻喉科,皮肤科,骨科",
+            "appointment_date": "required|date|after_or_equal:today",
+            "appointment_time": "required|regex:^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "auto_timestamps": true
+        }
+      },
+      "parameters": [
+        {
+          "name": "appointment_no",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "预约号",
+          "validation": {
+            "max_length": 50
+          }
+        },
+        {
+          "name": "patient_name",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "患者姓名",
+          "validation": {
+            "max_length": 50
+          }
+        },
+        {
+          "name": "doctor_name",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "医生姓名",
+          "validation": {
+            "max_length": 50
+          }
+        },
+        {
+          "name": "department",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "科室",
+          "validation": {
+            "enum": [
+              "内科",
+              "外科",
+              "儿科",
+              "妇产科",
+              "眼科",
+              "耳鼻喉科",
+              "皮肤科",
+              "骨科"
+            ]
+          }
+        },
+        {
+          "name": "appointment_date",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "预约日期",
+          "validation": {
+            "format": "date"
+          }
+        },
+        {
+          "name": "appointment_time",
+          "type": "string",
+          "location": "body",
+          "required": true,
+          "description": "预约时间",
+          "validation": {
+            "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "location": "body",
+          "required": false,
+          "description": "预约状态",
+          "validation": {
+            "enum": [
+              "已预约",
+              "已就诊",
+              "已取消",
+              "未到"
+            ]
+          }
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "预约创建成功",
+          "response_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": 201
+              },
+              "message": {
+                "type": "string",
+                "example": "预约创建成功"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "appointment": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "appointment_no": {
+                        "type": "string"
+                      },
+                      "patient_name": {
+                        "type": "string"
+                      },
+                      "doctor_name": {
+                        "type": "string"
+                      },
+                      "department": {
+                        "type": "string"
+                      },
+                      "appointment_date": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "appointment_time": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "datetime"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "form_config": {
+        "auto_generate": true,
+        "layout": {
+          "type": "grid",
+          "columns": 2,
+          "spacing": 16
+        },
+        "sections": [
+          {
+            "title": "预约信息",
+            "fields": [
+              "appointment_no",
+              "patient_name",
+              "doctor_name"
+            ]
+          },
+          {
+            "title": "时间安排",
+            "fields": [
+              "department",
+              "appointment_date",
+              "appointment_time",
+              "status"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "name": "patient_visit_flow",
+      "description": "从预约到就诊完成的完整流程",
+      "business_scenario": "hospital_management",
+      "status": "ACTIVE",
+      "user_intents": [
+        "患者就诊",
+        "预约挂号",
+        "医生诊疗"
+      ],
+      "trigger_keywords": [
+        "就诊",
+        "预约",
+        "挂号",
+        "看病"
+      ],
+      "inputs": {
+        "patient_id": {
+          "type": "string",
+          "required": true,
+          "description": "患者ID"
+        },
+        "appointment_id": {
+          "type": "string",
+          "required": false,
+          "description": "预约ID"
+        }
+      },
+      "nodes": [
+        {
+          "id": "start",
+          "name": "开始",
+          "type": "start",
+          "description": "工作流开始节点",
+          "position": {
+            "x": 100,
+            "y": 100
+          },
+          "parent_nodes": [],
+          "child_nodes": [
+            {
+              "node_id": "register_patient",
+              "condition": {
+                "type": "always",
+                "description": "总是执行"
+              }
+            }
+          ],
+          "config": {},
+          "outputs": [],
+          "ai_instructions": {
+            "purpose": "开始患者就诊流程",
+            "action": "初始化流程并收集患者信息"
+          }
+        },
+        {
+          "id": "register_patient",
+          "name": "患者登记",
+          "type": "api_call",
+          "description": "登记患者基本信息",
+          "position": {
+            "x": 300,
+            "y": 100
+          },
+          "parent_nodes": [
+            "start"
+          ],
+          "child_nodes": [
+            {
+              "node_id": "create_appointment",
+              "condition": {
+                "type": "form_completed",
+                "description": "患者信息登记完成"
+              }
+            }
+          ],
+          "config": {
+            "api_endpoint": "/api/v1/patients/register",
+            "method": "POST",
+            "parameters": {
+              "name": "${name}",
+              "id_card": "${id_card}",
+              "phone": "${phone}",
+              "gender": "${gender}",
+              "birth_date": "${birth_date}",
+              "address": "${address}"
+            }
+          },
+          "outputs": [
+            {
+              "name": "patient_info",
+              "type": "object",
+              "description": "患者基本信息"
+            }
+          ],
+          "ai_instructions": {
+            "purpose": "收集和验证患者基本信息",
+            "action": "协助护士完成患者登记表单填写",
+            "user_message": "请填写患者的基本信息，包括姓名、身份证号、联系电话等",
+            "success_handling": "患者信息已成功登记，进入预约流程",
+            "error_handling": "请检查填写信息是否完整和准确"
+          }
+        },
+        {
+          "id": "create_appointment",
+          "name": "创建预约",
+          "type": "api_call",
+          "description": "创建或确认预约",
+          "position": {
+            "x": 500,
+            "y": 100
+          },
+          "parent_nodes": [
+            "register_patient"
+          ],
+          "child_nodes": [
+            {
+              "node_id": "doctor_examination",
+              "condition": {
+                "type": "expression",
+                "expression": "appointment.status == '已预约'",
+                "description": "预约创建成功"
+              }
+            }
+          ],
+          "config": {
+            "api_endpoint": "/api/v1/appointments",
+            "method": "POST",
+            "parameters": {
+              "appointment_no": "{{generate_appointment_no()}}",
+              "patient_name": "{{patient_info.name}}",
+              "doctor_name": "{{selected_doctor}}",
+              "department": "{{selected_department}}",
+              "appointment_date": "{{appointment_date}}",
+              "appointment_time": "{{appointment_time}}"
+            }
+          },
+          "outputs": [
+            {
+              "name": "appointment",
+              "type": "object",
+              "description": "预约信息"
+            }
+          ],
+          "ai_instructions": {
+            "purpose": "创建或确认患者的就诊预约",
+            "action": "调用预约API创建预约记录",
+            "user_message": "正在为您安排预约...",
+            "success_handling": "预约创建成功，预约号：{{appointment.appointment_no}}",
+            "error_handling": "预约创建失败，请重新选择时间或医生"
+          }
+        },
+        {
+          "id": "doctor_examination",
+          "name": "医生诊疗",
+          "type": "api_call",
+          "description": "医生进行诊疗",
+          "position": {
+            "x": 700,
+            "y": 100
+          },
+          "parent_nodes": [
+            "create_appointment"
+          ],
+          "child_nodes": [
+            {
+              "node_id": "end",
+              "condition": {
+                "type": "form_completed",
+                "description": "诊疗完成"
+              }
+            }
+          ],
+          "config": {
+            "api_endpoint": "/api/v1/examinations",
+            "method": "POST",
+            "parameters": {
+              "patient_id": "${patient_info.patient_id}",
+              "symptoms": "${symptoms}",
+              "diagnosis": "${diagnosis}",
+              "treatment_plan": "${treatment_plan}",
+              "prescription": "${prescription}"
+            }
+          },
+          "outputs": [
+            {
+              "name": "diagnosis_result",
+              "type": "object",
+              "description": "诊疗结果"
+            }
+          ],
+          "ai_instructions": {
+            "purpose": "协助医生完成患者诊疗",
+            "action": "提供诊疗表单和患者历史信息",
+            "user_message": "请完成患者的诊疗记录",
+            "success_handling": "诊疗完成，已生成病历记录",
+            "error_handling": "请完善诊疗信息后再提交"
+          }
+        },
+        {
+          "id": "end",
+          "name": "结束",
+          "type": "end",
+          "description": "工作流结束节点",
+          "position": {
+            "x": 900,
+            "y": 100
+          },
+          "parent_nodes": [
+            "doctor_examination"
+          ],
+          "child_nodes": [],
+          "config": {},
+          "outputs": [
+            {
+              "name": "final_result",
+              "type": "object",
+              "description": "就诊流程完成结果"
+            }
+          ],
+          "ai_instructions": {
+            "purpose": "完成患者就诊流程",
+            "action": "整理并归档就诊记录",
+            "user_message": "就诊流程已完成，感谢您的配合",
+            "success_handling": "患者就诊流程已成功完成",
+            "error_handling": "流程完成时遇到问题，请联系管理员"
+          }
+        }
+      ],
+      "workflow_metadata": {
+        "version": "1.0",
+        "author": "AILF System",
+        "tags": [
+          "医院",
+          "就诊",
+          "预约"
+        ],
+        "complexity": "medium"
+      }
+    }
+  ]
+}

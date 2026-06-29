@@ -1,0 +1,198 @@
+/* AILF - 呼吸效果控制 */
+
+/* 只在主页面body应用背景呼吸动画 */
+body.main-page-body {
+  animation: enhanced-siri-breathing 8s ease-in-out infinite !important;
+  /* 确保背景样式正确 */
+  background-image:
+    radial-gradient(ellipse 35% 60% at 75% 15%, rgba(138, 43, 226, 0.4), transparent 65%),
+    radial-gradient(ellipse 55% 85% at 50% 45%, rgba(70, 200, 190, 0.6), transparent 75%),
+    radial-gradient(ellipse 45% 75% at 15% 35%, rgba(179, 58, 91, 0.65), transparent 70%),
+    radial-gradient(ellipse 45% 75% at 90% 65%, rgba(15, 82, 186, 0.65), transparent 70%),
+    radial-gradient(ellipse 40% 50% at 25% 85%, rgba(255, 140, 0, 0.35), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 60% 70%, rgba(147, 112, 219, 0.25), transparent 80%),
+    linear-gradient(160deg, #1A0A1F 0%, #0F1B2E 50%, #0A1429 100%) !important;
+  background-attachment: fixed !important;
+  background-position: 75% 15%, 50% 45%, 15% 35%, 90% 65%, 25% 85%, 60% 70%, 0% 0% !important;
+}
+
+/* 配置页面和生成界面禁用背景呼吸动画 */
+body.config-page-body,
+body.generated-interface-body {
+  animation: none !important;
+  background: #f5f5f7 !important;
+  background-image: none !important;
+}
+
+/* 只在主页面应用呼吸效果 */
+.main-page .app-name {
+  animation: breathe 4s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用呼吸效果 */
+.config-page .app-name,
+.generated-interface .app-name,
+.amis-render-area .app-name {
+  animation: none !important;
+}
+
+/* 主页面的标题呼吸效果 */
+.main-page .ailf-title {
+  animation: naturalMetalBreathing 6s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用标题呼吸效果 */
+.config-page .ailf-title,
+.generated-interface .ailf-title,
+.amis-render-area .ailf-title {
+  animation: none !important;
+}
+
+/* 主页面的背景呼吸效果 */
+.main-page .cosmic-background {
+  animation: gentleCosmicBreathing 8s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用背景呼吸效果 */
+.config-page .cosmic-background,
+.generated-interface .cosmic-background,
+.amis-render-area .cosmic-background {
+  animation: none !important;
+}
+
+/* 主页面的麦克风按钮浮动效果 */
+.main-page .mic-button {
+  animation: gentleMicFloat 4s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用麦克风浮动效果 */
+.config-page .mic-button,
+.generated-interface .mic-button,
+.amis-render-area .mic-button {
+  animation: none !important;
+}
+
+/* 主页面的文本光晕效果 */
+.main-page .placeholder-text {
+  animation: enhancedTextBreathe 5s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用文本光晕效果 */
+.config-page .placeholder-text,
+.generated-interface .placeholder-text,
+.amis-render-area .placeholder-text {
+  animation: none !important;
+}
+
+/* 主页面的响应文本呼吸效果 */
+.main-page .ai-response {
+  animation: enhancedTextBreathe 4s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用响应文本呼吸效果 */
+.config-page .ai-response,
+.generated-interface .ai-response,
+.amis-render-area .ai-response {
+  animation: none !important;
+}
+
+/* 主页面的用户转录文本呼吸效果 */
+.main-page .user-transcript {
+  animation: subtleTextGlow 3s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用用户转录文本呼吸效果 */
+.config-page .user-transcript,
+.generated-interface .user-transcript,
+.amis-render-area .user-transcript {
+  animation: none !important;
+}
+
+/* 主页面的光晕效果 */
+.main-page .background-glow {
+  animation: enhancedSubtleGlow 6s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用光晕效果 */
+.config-page .background-glow,
+.generated-interface .background-glow,
+.amis-render-area .background-glow {
+  animation: none !important;
+}
+
+/* 主页面的装饰元素呼吸效果 */
+.main-page .app-name::before {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.main-page .app-name::after {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* 配置页面和生成界面禁用装饰元素呼吸效果 */
+.config-page .app-name::before,
+.config-page .app-name::after,
+.generated-interface .app-name::before,
+.generated-interface .app-name::after,
+.amis-render-area .app-name::before,
+.amis-render-area .app-name::after {
+  animation: none !important;
+}
+
+/* 确保配置界面的所有元素都没有呼吸效果 */
+.config-page *,
+.generated-interface *,
+.amis-render-area * {
+  animation-name: none !important;
+}
+
+/* 但保留必要的交互动画 */
+.config-page .ant-btn,
+.config-page .ant-input,
+.config-page .ant-select,
+.generated-interface .ant-btn,
+.generated-interface .ant-input,
+.generated-interface .ant-select,
+.amis-render-area .ant-btn,
+.amis-render-area .ant-input,
+.amis-render-area .ant-select {
+  animation: none !important;
+  transition: all 0.3s ease !important;
+}
+
+/* 保留hover和focus效果 */
+.config-page .ant-btn:hover,
+.config-page .ant-input:focus,
+.config-page .ant-select:hover,
+.generated-interface .ant-btn:hover,
+.generated-interface .ant-input:focus,
+.generated-interface .ant-select:hover,
+.amis-render-area .ant-btn:hover,
+.amis-render-area .ant-input:focus,
+.amis-render-area .ant-select:hover {
+  animation: none !important;
+  transition: all 0.3s ease !important;
+}
+
+/* 禁用所有可能的呼吸相关动画 */
+.config-page [class*="breathe"],
+.config-page [class*="glow"],
+.config-page [class*="pulse"],
+.config-page [class*="float"],
+.generated-interface [class*="breathe"],
+.generated-interface [class*="glow"],
+.generated-interface [class*="pulse"],
+.generated-interface [class*="float"],
+.amis-render-area [class*="breathe"],
+.amis-render-area [class*="glow"],
+.amis-render-area [class*="pulse"],
+.amis-render-area [class*="float"] {
+  animation: none !important;
+}
+
+/* 确保生成的amis组件没有呼吸效果 */
+.amis-scope *,
+.cxd-Page *,
+.cxd-Form * {
+  animation: none !important;
+}

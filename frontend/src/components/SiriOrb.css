@@ -1,0 +1,126 @@
+/**
+ * SiriOrb - Apple Siri 风格语音按钮
+ * 包含呼吸光晕和猁璃拟态效果
+ */
+
+.siri-orb-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  /* 确保在波形之上 */
+  z-index: 95;
+}
+
+/* 呼吸光晕背景层 - 更柔和 */
+.siri-orb-wrapper::before {
+  content: '';
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  /* 极其柔和的光晕 */
+  background: 
+    radial-gradient(
+      circle at center,
+      rgba(90, 200, 250, 0.12) 0%,
+      rgba(175, 82, 222, 0.08) 35%,
+      rgba(255, 45, 85, 0.04) 55%,
+      transparent 75%
+    );
+  filter: blur(40px);
+  animation: siriBreathingGlow 6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* 呼吸光晕动画 - 更柔和 */
+@keyframes siriBreathingGlow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.6;
+  }
+}
+
+.siri-orb-button {
+  position: relative;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* 猁璃拟态效果 */
+  border-radius: 50%;
+}
+
+/* 猁璃拟态覆盖层 */
+.siri-orb-button::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+.siri-orb-button:hover {
+  transform: scale(1.08);
+}
+
+.siri-orb-button:active {
+  transform: scale(0.95);
+}
+
+.siri-orb-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* 监听状态样式 */
+.siri-orb-wrapper.listening .siri-orb-button {
+  will-change: transform;
+}
+
+.siri-orb-wrapper.listening::before {
+  /* 监听时光晕稍微增强 */
+  background: 
+    radial-gradient(
+      circle at center,
+      rgba(90, 200, 250, 0.2) 0%,
+      rgba(175, 82, 222, 0.12) 30%,
+      rgba(255, 45, 85, 0.08) 50%,
+      transparent 70%
+    );
+  animation: siriBreathingGlowActive 3s ease-in-out infinite;
+}
+
+/* 激活状态呼吸动画 - 柔和 */
+@keyframes siriBreathingGlowActive {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+}
+
+/* 加载状态 */
+.siri-orb-wrapper.loading .siri-orb-button {
+  opacity: 0.8;
+}
+
+.siri-orb-wrapper.loading::before {
+  animation: siriBreathingGlow 2s ease-in-out infinite;
+}

@@ -1,0 +1,63 @@
+# FastAPI核心依赖
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# JWT认证依赖
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+
+# 数据验证
+pydantic==2.5.0
+
+# 环境变量管理
+python-dotenv==1.0.0
+
+# 数据库相关
+sqlalchemy==2.0.23
+pymysql==1.1.0
+alembic==1.13.1
+redis[hiredis]==5.0.1
+celery==5.4.0
+
+# 时间处理
+python-dateutil==2.8.2
+
+# HTTP客户端（用于AI API调用）
+aiohttp==3.9.1
+
+# ============================================
+# 图增强大模型 (Graph-Augmented LLM) 依赖
+# ============================================
+
+# PyTorch（根据 CUDA 版本安装，这里使用 pip 索引）
+torch>=2.0.0
+# 注意：如需 CUDA 支持，请使用：
+# pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# PyTorch Geometric（图神经网络）
+torch_geometric>=2.4.0
+# PyG 依赖库（可能需要单独安装）
+# pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
+
+# Transformers 和 PEFT（LLM 和 LoRA）
+transformers>=4.35.0
+peft>=0.6.0
+
+# 量化支持
+bitsandbytes>=0.41.0
+
+# 加速器
+accelerate>=0.24.0
+
+# Embedding 模型（图裁剪服务使用）
+sentence-transformers>=2.2.0
+
+# ============================================
+
+# 开发和测试依赖
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# 异步事件循环支持
+nest-asyncio==1.5.8

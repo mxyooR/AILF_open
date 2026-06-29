@@ -1,0 +1,64 @@
+{
+  "type": "page",
+  "title": "{{ page_title | default(workflow.name[:6] if workflow.name else '工作流') }}",
+  "workflow_id": "{{ workflow.id or workflow.workflow_id }}",
+  "current_node_id": "{{ node.id }}",
+  "body": {
+    "type": "wizard",
+    "mode": "horizontal",
+    "steps": [
+      {
+        "title": "{{ node.description or node.name or '步骤' }}",
+        "initApi": {
+          "method": "get",
+          "url": "{{ api_url }}",
+          "adaptor": {{ init_api_adaptor | default('') | tojson }}
+        },
+        "body": [
+          {
+            "type": "alert",
+            "level": "info",
+            "body": "{{ user_message | default('正在获取数据...') }}",
+            "showIcon": true,
+            "visibleOn": "!this.data"
+          },
+          {% if display_fields %}
+          {
+            "type": "static",
+            "label": "数据详情",
+            "tpl": "<div class='data-display'>{% for field in display_fields if field.type != 'array' %}<p><strong>{{ field.label }}:</strong> {{'${' + field.name + '}'}}</p>{% endfor %}</div>"
+          },
+          {% for field in display_fields %}
+          {
+            "type": "hidden",
+            "name": "{{ field.name }}",
+            "value": "${{ field.name }}"
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+          {% else %}
+          {
+            "type": "tpl",
+            "tpl": "<div class='data-loaded'>数据已加载</div>"
+          }
+          {% endif %}
+
+        ],
+        "api": {
+          "method": "post",
+          "url": "/api/v1/workflow/state",
+          "data": {
+            "workflow_id": "{{ workflow.id or workflow.workflow_id }}",
+            "node_id": "{{ node.id }}",
+            "action": "next",
+            "api_request": {
+              "method": "GET",
+              "url": "{{ api_url }}"
+            },
+            "api_response": "${__api_response__}"
+          }
+        }
+      }
+    ],
+    "actionFinishLabel": "{{ next_button_text | default('下一步') }}"
+  }
+}

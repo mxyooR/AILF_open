@@ -1,0 +1,60 @@
+/**
+ * 用户权限查看模态框样式
+ */
+
+.user-permissions-modal .permissions-content {
+  padding: 8px 0;
+}
+
+.user-permissions-modal .permissions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  min-height: 100px;
+}
+
+.user-permissions-modal .resource-distribution,
+.user-permissions-modal .method-distribution {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.user-permissions-modal .resource-distribution .ant-space,
+.user-permissions-modal .method-distribution .ant-space {
+  margin-top: 12px;
+}
+
+.user-permissions-modal .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #fafafa;
+  font-weight: 500;
+}
+
+.user-permissions-modal .ant-table-wrapper {
+  margin-top: 16px;
+}
+
+.user-permissions-modal .ant-statistic-title {
+  font-size: 14px;
+  color: #666;
+}
+
+.user-permissions-modal .ant-statistic-content {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.user-permissions-modal .ant-card {
+  text-align: center;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.user-permissions-modal .ant-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+  transition: box-shadow 0.3s ease;
+}

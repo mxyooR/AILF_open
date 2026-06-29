@@ -1,0 +1,136 @@
+{
+  "type": "page",
+  "title": "{{ slot_values.get('page_title','') }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ slot_values.get('user_message','') }}",
+      "showIcon": true
+    },
+    {
+      "type": "form",
+      "title": "{{ slot_values.get('page_title','') }}",
+      "mode": "{{ form_mode }}",
+      {% if form_mode == "horizontal" %}
+      "horizontal": {"left": 3, "right": 9},
+      "labelAlign": "{{ label_align }}",
+      {% endif %}
+      "api": {
+        "method": "{{ api_method | lower }}",
+        "url": "{{ api_url }}",
+        "data": { "&": "$$" },
+        "adaptor": {{ api_adaptor | default('') | tojson }}
+      },
+      "body": [
+        {% for field in form_fields %}
+        {
+          "type": "{{ field.type }}",
+          "name": "{{ field.name }}",
+          "label": "{{ slot_values.get('field_label_' ~ field.name, '') }}",
+          "required": {{ field.required | default(false, true) | tojson }}
+          {% if field.placeholder %}
+          ,"placeholder": {{ field.placeholder | tojson }}
+          {% endif %}
+          {% if field.options %}
+          ,"options": {{ field.options | tojson }}
+          {% endif %}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+        {% if form_fields %},{% endif %}
+        {
+          "type": "divider",
+          "visibleOn": "(this.__api_kv__ && this.__api_kv__.length) || (this.__api_items_rows__ && this.__api_items_rows__.length) || (this.__api_items_flat__ && this.__api_items_flat__.length)"
+        },
+        {
+          "type": "alert",
+          "level": "success",
+          "showIcon": true,
+          "body": "${__api_message__|default:\"请求成功\"}",
+          "visibleOn": "this.__api_code__ == 200"
+        },
+        {
+          "type": "table",
+          "title": "返回数据",
+          "source": "${__api_kv__}",
+          "columns": [
+            {"name": "label", "label": "字段", "type": "text"},
+            {"name": "value", "label": "值", "type": "text"}
+          ],
+          "affixHeader": true,
+          "visibleOn": "this.__api_kv__ && this.__api_kv__.length && !(this.items && this.items.length)"
+        },
+        {
+          "type": "alert",
+          "level": "info",
+          "showIcon": true,
+          "body": "列表数据仅展示前 10 条，每条最多 12 个字段",
+          "visibleOn": "this.__api_items_truncated__ === true"
+        },
+        {% if list_columns %}
+        {
+          "type": "table",
+          "title": "列表数据",
+          "key": "${items && items.length}",
+          "source": "${items}",
+          "columns": {{ list_columns | tojson }},
+          "affixHeader": true,
+          "visibleOn": "this.items && this.items.length"
+        },
+        {% endif %}
+        {
+          "type": "table",
+          "title": "列表数据（展开）",
+          "source": "${__api_items_flat__}",
+          "columns": [
+            {"name": "index", "label": "序号", "type": "text", "width": 60},
+            {"name": "label", "label": "字段", "type": "text", "width": 180},
+            {"name": "value", "label": "值", "type": "text"}
+          ],
+          "affixHeader": true,
+          {% if list_columns %}
+          "visibleOn": "!(this.items && this.items.length) && this.__api_items_flat__ && this.__api_items_flat__.length"
+          {% else %}
+          "visibleOn": "this.__api_items_flat__ && this.__api_items_flat__.length"
+          {% endif %}
+        }
+        ,
+        {
+          "type": "divider",
+          "visibleOn": "this.__api_pdf_url__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>改签政策文件预览</div><object data='${__api_pdf_preview_url__ || __api_pdf_url__}' type='application/pdf' style='width:100%;height:680px;border:1px solid #e5e7eb;border-radius:8px;'><iframe src='${__api_pdf_preview_url__ || __api_pdf_url__}' style='width:100%;height:680px;border:0;'></iframe></object><div style='margin-top:8px;'><a href='${__api_pdf_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开PDF</a></div>",
+          "visibleOn": "this.__api_pdf_url__"
+        },
+        {
+          "type": "divider",
+          "visibleOn": "this.__api_image_url__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>图片预览</div><img src='${__api_image_preview_url__ || __api_image_url__}' alt='preview image' style='max-width:100%;max-height:680px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#f8fafc;' /><div style='margin-top:8px;'><a href='${__api_image_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开图片</a></div>",
+          "visibleOn": "this.__api_image_url__"
+        },
+        {
+          "type": "divider",
+          "visibleOn": "this.__api_audio_url__"
+        },
+        {
+          "type": "tpl",
+          "tpl": "<div style='margin-bottom:8px;'>音频预览</div><audio controls preload='metadata' src='${__api_audio_preview_url__ || __api_audio_url__}' style='width:100%;'></audio><div style='margin-top:8px;'><a href='${__api_audio_url__}' target='_blank' rel='noopener noreferrer'>新窗口打开音频</a></div>",
+          "visibleOn": "this.__api_audio_url__"
+        }
+      ],
+      "submitText": "{{ slot_values.get('submit_button_text','') }}",
+      "actions": [
+        {
+          "type": "submit",
+          "label": "{{ slot_values.get('submit_button_text','') }}",
+          "level": "primary"
+        }
+      ]
+    }
+  ]
+}

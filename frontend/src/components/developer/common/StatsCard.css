@@ -1,0 +1,222 @@
+/* 统计卡片组件样式 - Apple风格 */
+
+.stats-card {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #007aff 0%, #5856d6 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stats-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 122, 255, 0.2);
+  transform: translateY(-4px);
+}
+
+.stats-card:hover::before {
+  opacity: 1;
+}
+
+.stats-card .ant-card-body {
+  padding: 24px;
+  height: 100%;
+  position: relative;
+}
+
+.stats-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.stats-title {
+  color: #86868b;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.stats-icon {
+  color: #007aff;
+  font-size: 22px;
+  opacity: 0.8;
+  background: rgba(0, 122, 255, 0.08);
+  padding: 8px;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover .stats-icon {
+  opacity: 1;
+  background: rgba(0, 122, 255, 0.12);
+  transform: scale(1.05);
+}
+
+.stats-value-container {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.stats-value-container .ant-statistic {
+  flex: 1;
+}
+
+.stats-value-container .ant-statistic-content {
+  color: var(--text-primary);
+}
+
+.stats-trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-left: 12px;
+}
+
+.stats-trend--positive {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.stats-trend--negative {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
+}
+
+.stats-trend-icon {
+  font-size: 14px;
+}
+
+.stats-trend-value {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+/* 颜色变体 */
+.stats-card--primary::before {
+  background: linear-gradient(90deg, #007aff 0%, #5856d6 100%);
+}
+
+.stats-card--primary:hover {
+  border-color: rgba(0, 122, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 122, 255, 0.2);
+}
+
+.stats-card--primary .stats-icon {
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.08);
+}
+
+.stats-card--success::before {
+  background: linear-gradient(90deg, #34c759 0%, #30d158 100%);
+}
+
+.stats-card--success:hover {
+  border-color: rgba(52, 199, 89, 0.3);
+  box-shadow: 0 8px 32px rgba(52, 199, 89, 0.2);
+}
+
+.stats-card--success .stats-icon {
+  color: #34c759;
+  background: rgba(52, 199, 89, 0.08);
+}
+
+.stats-card--warning::before {
+  background: linear-gradient(90deg, #ff9500 0%, #ffcc02 100%);
+}
+
+.stats-card--warning:hover {
+  border-color: rgba(255, 149, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(255, 149, 0, 0.2);
+}
+
+.stats-card--warning .stats-icon {
+  color: #ff9500;
+  background: rgba(255, 149, 0, 0.08);
+}
+
+.stats-card--error::before {
+  background: linear-gradient(90deg, #ff3b30 0%, #ff6961 100%);
+}
+
+.stats-card--error:hover {
+  border-color: rgba(255, 59, 48, 0.3);
+  box-shadow: 0 8px 32px rgba(255, 59, 48, 0.2);
+}
+
+.stats-card--error .stats-icon {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.08);
+}
+
+.stats-card--info::before {
+  background: linear-gradient(90deg, #5ac8fa 0%, #007aff 100%);
+}
+
+.stats-card--info:hover {
+  border-color: rgba(90, 200, 250, 0.3);
+  box-shadow: 0 8px 32px rgba(90, 200, 250, 0.2);
+}
+
+.stats-card--info .stats-icon {
+  color: #5ac8fa;
+  background: rgba(90, 200, 250, 0.08);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .stats-card .ant-card-body {
+    padding: 16px;
+  }
+  
+  .stats-header {
+    margin-bottom: 12px;
+  }
+  
+  .stats-title {
+    font-size: 13px;
+  }
+  
+  .stats-icon {
+    font-size: 18px;
+  }
+  
+  .stats-value-container .ant-statistic-content-value {
+    font-size: 24px !important;
+  }
+  
+  .stats-trend {
+    font-size: 11px;
+    padding: 3px 6px;
+    margin-left: 8px;
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "type": "page",
+  "title": "{{ slot_values.get('page_title','') }}",
+  "workflow_id": "{{ workflow_id }}",
+  "current_node_id": "{{ node_id }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ slot_values.get('user_message','') }}",
+      "showIcon": true
+    },
+    {% if context_display %}
+    {
+      "type": "tpl",
+      "tpl": "<div class='context-info' style='background:#f5f5f5;padding:10px;border-radius:4px;margin-bottom:10px;'><p style='margin:0 0 5px 0;color:#666;'>{{ slot_values.get('context_info_title','') }}:</p><ul style='margin:0;padding-left:20px;'>{% for key, value in context_display.items() %}<li><strong>{{ slot_values.get('field_label_' ~ key, '') }}:</strong> {{ value }}</li>{% endfor %}</ul></div>"
+    },
+    {% endif %}
+    {
+      "type": "form",
+      "mode": "horizontal",
+      "horizontal": {"left": 3, "right": 9},
+      "api": {
+        "method": "post",
+        "url": "/api/v1/workflow/state",
+        "data": {
+          "workflow_id": "{{ workflow_id }}",
+          "node_id": "{{ node_id }}",
+          "action": "submit",
+          "&": "$$"
+        },
+        "requestAdaptor": "api.data = {...api.data, ...api.body}; return api;"
+      },
+      "body": [
+        {% for field in form_fields %}
+        {
+          "type": "{{ field.type }}",
+          "name": "{{ field.name }}",
+          "label": "{{ slot_values.get('field_label_' ~ field.name, '') }}",
+          "required": {{ field.required | default(false, true) | tojson }},
+          "placeholder": "\u8bf7\u8f93\u5165{{ slot_values.get('field_label_' ~ field.name, '') }}"
+          {% if field.format %}
+          ,"format": "{{ field.format }}"
+          {% endif %}
+          {% if field.value is not none and field.value is not undefined %}
+          ,"value": {{ field.value | tojson }}
+          {% endif %}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ],
+      "actions": [
+        {
+          "type": "submit",
+          "label": "{{ slot_values.get('submit_button_text','') }}",
+          "level": "primary"
+        }
+      ]
+    }
+  ]
+}

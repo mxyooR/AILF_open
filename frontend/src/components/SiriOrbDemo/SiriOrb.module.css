@@ -1,0 +1,135 @@
+.root {
+  box-sizing: border-box;
+  margin: 0;
+  width: 160px;
+  height: 160px;
+  font-size: 160px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: transparent;
+  /* GPU 加速 */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.rainbowBg {
+  position: absolute;
+  z-index: 1;
+  transform: rotate(0deg) translateZ(0);
+  transform-origin: center center;
+  width: 1em;
+  height: 1em;
+  border: none;
+  animation: rainbow 12s infinite linear;
+  border-radius: 0.5em;
+  /* 极其柔和的光晕 */
+  box-shadow: 
+    0 0 0.4em 0.1em rgba(90, 200, 250, 0.1),
+    0 0 0.8em 0.2em rgba(175, 82, 222, 0.06),
+    inset 0.02em 0 0.1em 0.02em rgba(167, 139, 250, 0.15);
+  transform-style: preserve-3d;
+  perspective: 1em;
+  /* 更柔和的背景渐变 */
+  background: radial-gradient(
+    circle at center,
+    rgba(20, 30, 50, 0.9) 0%,
+    rgba(20, 30, 50, 0.6) 40%,
+    rgba(20, 30, 50, 0.3) 65%,
+    transparent 100%
+  );
+  /* 添加微弱的模糊让边缘更柔和 */
+  filter: blur(0.5px);
+}
+
+.rainbowFg {
+  position: absolute;
+  display: flex;
+  z-index: 1;
+  transform: rotate(0deg) translateZ(0);
+  transform-origin: center center;
+  width: 1em;
+  height: 1em;
+  border: none;
+  border-radius: 0.5em;
+  transform-style: preserve-3d;
+  perspective: 1em;
+}
+
+.rainbowContainer {
+  position: absolute;
+  z-index: 1;
+  transform: rotate(0deg) translateZ(0);
+  transform-origin: center center;
+  width: 1em;
+  height: 1em;
+  border: none;
+  border-radius: 0.5em;
+  transform-style: preserve-3d;
+  perspective: 1em;
+  animation: rainbow-rotate 12s infinite linear;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.08) 30%,
+    rgba(255, 255, 255, 0) 55%
+  );
+}
+
+@keyframes rainbow-rotate {
+  0% {
+    transform: rotate(0deg) translateZ(0);
+  }
+  25% {
+    transform: rotate(90deg) translateZ(0);
+  }
+  50% {
+    transform: rotate(180deg) translateZ(0);
+  }
+  75% {
+    transform: rotate(270deg) translateZ(0);
+  }
+  100% {
+    transform: rotate(360deg) translateZ(0);
+  }
+}
+
+@keyframes rainbow {
+  0% {
+    transform: rotate(0deg) translateZ(0);
+    box-shadow: 0 0 0.3em 0.08em rgba(96, 165, 250, 0.08),
+      inset 0.02em 0 0.08em 0.02em rgba(167, 139, 250, 0.12);
+  }
+  25% {
+    transform: rotate(90deg) translateZ(0);
+    box-shadow: 0 0 0.3em 0.08em rgba(167, 139, 250, 0.1),
+      inset 0.02em 0 0.08em 0.02em rgba(147, 197, 253, 0.12);
+  }
+  50% {
+    transform: rotate(180deg) translateZ(0);
+    box-shadow: 0 0 0.3em 0.08em rgba(96, 165, 250, 0.08),
+      inset 0.02em 0 0.08em 0.02em rgba(103, 232, 249, 0.12);
+  }
+  75% {
+    transform: rotate(270deg) translateZ(0);
+    box-shadow: 0 0 0.3em 0.08em rgba(167, 139, 250, 0.1),
+      inset 0.02em 0 0.08em 0.02em rgba(96, 165, 250, 0.12);
+  }
+  100% {
+    transform: rotate(360deg) translateZ(0);
+    box-shadow: 0 0 0.3em 0.08em rgba(96, 165, 250, 0.08),
+      inset 0.02em 0 0.08em 0.02em rgba(167, 139, 250, 0.12);
+  }
+}
+.rainbowContainer {
+  position: relative;
+
+  & > svg {
+    position: absolute;
+    top: 0.15em;
+    left: 0.15em;
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 0;
+  }
+}

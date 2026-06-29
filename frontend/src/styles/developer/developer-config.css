@@ -1,0 +1,697 @@
+/**
+ * AILF Developer Configuration Panel - Apple Human Interface Guidelines Redesign
+ */
+
+:root {
+  /* Typography - San Francisco (SF Pro) */
+  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Apple System Colors */
+  --system-blue: #007AFF;
+  --system-blue-hover: #0062cc;
+  --brand-primary: #007AFF; /* New Brand Identity */
+  --brand-primary-soft: rgba(0, 122, 255, 0.1);
+  --brand-primary-hover: #0051a8;
+  --system-green: #34C759;
+  --system-red: #FF3B30;
+  --system-orange: #FF9500;
+  --system-gray: #8E8E93;
+  --system-gray-2: #AEAEB2;
+  --system-gray-3: #C7C7CC;
+  --system-gray-4: #D1D1D6;
+  --system-gray-5: #E5E5EA;
+  --system-gray-6: #F2F2F7;
+  
+  /* Backgrounds & Materials */
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F5F5F7;
+  --material-glass: rgba(255, 255, 255, 0.85);
+  --material-glass-sidebar: rgba(255, 255, 255, 0.75);
+  
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --shadow-card-hover: 0 12px 32px rgba(0, 0, 0, 0.08); /* Enhanced Lift */
+  --shadow-floating: 0 20px 60px rgba(0, 0, 0, 0.12);
+  
+  /* Borders & Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px; /* Increased for softer look */
+  --radius-xl: 24px;
+  --border-light: rgba(0, 0, 0, 0.06);
+  
+/* ... (rest of the file) ... */
+
+/* --- Template Selection Grid --- */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+  padding: 8px;
+}
+
+.template-card {
+  background: var(--bg-primary);
+  border-radius: 24px; /* Super rounded */
+  border: 1px solid rgba(0,0,0,0.02); /* Almost invisible border */
+  box-shadow: var(--shadow-sm);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); /* Apple spring-like ease */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.template-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.template-card.selected {
+  box-shadow: 0 0 0 2px var(--brand-primary), var(--shadow-md);
+  background: #fff;
+}
+
+.template-card-body {
+  padding: 24px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--brand-primary-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: var(--brand-primary);
+  font-size: 24px;
+}
+
+.template-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 6px;
+}
+
+.template-desc {
+  font-size: 14px;
+  color: var(--system-gray);
+  line-height: 1.5;
+  margin-bottom: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.template-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.template-tag {
+  background: var(--system-gray-6);
+  color: var(--system-gray);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 100px; /* Pill shape */
+  font-weight: 500;
+}
+
+/* --- Auth Card Refinement --- */
+.auth-card {
+  border-radius: 32px; /* Max roundness */
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.auth-input {
+  background: #F2F2F7 !important; /* Soft Gray Input */
+  border: none !important;
+  height: 48px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.auth-input:focus, .auth-input:focus-within {
+  background: #fff !important;
+  box-shadow: 0 0 0 2px var(--brand-primary) !important;
+}
+
+.auth-button {
+  background: var(--brand-primary) !important;
+  height: 48px;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.auth-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4);
+}
+  
+  /* Transitions */
+  --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+body.config-page-body {
+  background-color: var(--bg-secondary);
+  font-family: var(--font-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #1d1d1f;
+  overflow-x: hidden;
+}
+
+/* --- Layout --- */
+
+.developer-config-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* Subtle mesh gradient background */
+  background: radial-gradient(circle at 0% 0%, rgba(0,122,255,0.05) 0%, rgba(255,255,255,0) 50%),
+              radial-gradient(circle at 100% 100%, rgba(52,199,89,0.05) 0%, rgba(255,255,255,0) 50%),
+              var(--bg-secondary);
+}
+
+/* --- Header --- */
+
+.config-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.8); /* High transparency for vibrancy */
+  backdrop-filter: saturate(180%) blur(20px); /* "Vibrancy" look */
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05); /* Hairline border */
+  display: flex;
+  align-items: center;
+  padding: 0; /* Remove wrapper padding, handle in content */
+  transition: all 0.3s var(--ease-default);
+}
+
+.header-content {
+  width: 100%;
+  max-width: 1600px; /* Align with page content */
+  margin: 0 auto;
+  padding: 0 40px; /* Match .config-main horizontal padding */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.header-left {
+  display: flex;
+  align-items: center; /* Align vertical centers */
+  gap: 12px;
+}
+
+.main-title {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 600; /* Semibold */
+  font-size: 18px; /* Slightly refined size */
+  color: #1d1d1f;
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1; /* Strict line-height */
+  border: none;
+  padding: 0;
+}
+
+.subtitle {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px; /* Increased from 13px for better CJK legibility */
+  color: #86868b; /* Lighter grey */
+  font-weight: 400;
+  margin: 0; /* Override global text.css margin-bottom */
+  padding: 0;
+  background: transparent;
+  border: none;
+  line-height: 1; /* Strict line-height */
+  position: relative;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Header Button Overrides - Apple Style */
+.config-header .ant-btn {
+  height: 32px;
+  padding: 0 16px; /* Wider padding for pill shape */
+  font-size: 13px;
+  border-radius: 100px; /* Pill shape */
+  font-weight: 500;
+  border: none;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+/* Primary Header Button (Back to Home) */
+.config-header .home-button {
+  background: #F5F5F7 !important; /* Soft light gray */
+  color: #1d1d1f !important; /* Dark text */
+}
+
+.config-header .home-button:hover {
+  background: #E8E8ED !important; /* Slightly darker gray */
+  transform: none; /* No movement, just color change */
+}
+
+/* Secondary Header Button (Logout) */
+.config-header .logout-button {
+  background: transparent !important;
+  color: #86868b !important;
+  padding: 0 8px; /* Less padding for text link feel */
+}
+
+.config-header .logout-button:hover {
+  color: #1d1d1f !important;
+  background: rgba(0,0,0,0.03) !important;
+}
+
+/* --- Main Content Area --- */
+
+.config-main {
+  display: flex;
+  flex: 1;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 32px 40px; /* Increased padding for Apple-like spaciousness */
+  gap: 24px;
+  box-sizing: border-box;
+}
+
+/* --- Sidebar (Timeline) --- */
+
+.steps-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 88px;
+  height: fit-content;
+}
+
+.steps-container {
+  background: var(--material-glass-sidebar);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(255,255,255,0.4);
+}
+
+.steps-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.steps-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px 0;
+}
+
+.steps-subtitle {
+  font-size: 13px;
+  color: var(--system-gray);
+  margin: 0;
+}
+
+.steps-list {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Vertical Line */
+.steps-list::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 19px; /* Align with icon center */
+  width: 2px;
+  background: var(--system-gray-5);
+  z-index: 0;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px 0;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s var(--ease-default);
+  opacity: 0.6;
+}
+
+.step-item:hover {
+  opacity: 0.8;
+}
+
+.step-item.active {
+  opacity: 1;
+}
+
+.step-item.completed {
+  opacity: 1;
+}
+
+.step-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.step-indicator {
+  width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 12px;
+}
+
+/* Timeline Dot / Checkmark Container */
+.step-dot-container {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  border-radius: 50%;
+  z-index: 2;
+  box-shadow: 0 0 0 4px var(--material-glass-sidebar); /* Mask line */
+  transition: all 0.3s var(--ease-spring);
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--system-gray-3);
+  transition: all 0.3s var(--ease-spring);
+}
+
+.step-item.active .step-dot-container {
+  transform: scale(1.1);
+  background: var(--system-blue);
+}
+
+.step-item.active .step-dot {
+  background: #fff;
+  width: 8px;
+  height: 8px;
+}
+
+.step-item.completed .step-dot-container {
+  background: var(--system-green);
+}
+
+.step-item.completed .step-dot {
+  display: none; /* Hide dot, show checkmark icon instead via JS or pseudo */
+}
+
+/* For checkmark icon */
+.step-check-icon {
+  color: #fff;
+  font-size: 14px;
+}
+
+.step-content {
+  flex: 1;
+  padding-top: 2px;
+}
+
+.step-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 2px 0;
+  color: #1d1d1f;
+  transition: color 0.2s;
+}
+
+.step-item.active .step-title {
+  color: var(--system-blue);
+}
+
+.step-description {
+  font-size: 12px;
+  color: var(--system-gray);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Footer progress */
+.steps-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.progress-info {
+  margin-bottom: 8px;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: var(--system-gray);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--system-gray-6);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--system-blue);
+  border-radius: 2px;
+  transition: width 0.5s var(--ease-spring);
+}
+
+
+/* --- Right Content Area --- */
+
+.content-area {
+  flex: 1;
+  min-width: 0; /* Prevent overflow */
+}
+
+.content-container {
+  animation: fadeIn 0.5s var(--ease-default);
+}
+
+/* --- Cards & Panels --- */
+
+.apple-card {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 32px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(0,0,0,0.02);
+  transition: box-shadow 0.3s var(--ease-default), transform 0.3s var(--ease-default);
+}
+
+.apple-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* --- Authentication Specific --- */
+
+.authentication-step {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: url('https://cdn.svgator.com/images/2022/05/mesh-gradient-background-animation.svg') no-repeat center center fixed;
+  background-size: cover;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: var(--radius-xl);
+  padding: 48px 40px;
+  box-shadow: var(--shadow-floating);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+
+.auth-icon-wrapper {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 24px;
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(0, 122, 255, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-icon-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.05) 100%);
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: #1d1d1f;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.auth-subtitle {
+  font-size: 15px;
+  color: var(--system-gray);
+  margin-bottom: 32px;
+  display: block;
+}
+
+/* --- Form Elements --- */
+
+/* Input */
+.apple-input .ant-input-affix-wrapper,
+.apple-input.ant-input-affix-wrapper,
+.apple-input.ant-input,
+.ant-input-affix-wrapper.apple-input-style,
+.ant-input.apple-input-style {
+  height: 50px;
+  border-radius: 14px;
+  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  transition: all 0.2s var(--ease-default);
+  padding-left: 16px;
+}
+
+.apple-input .ant-input-affix-wrapper:hover,
+.apple-input.ant-input-affix-wrapper:hover,
+.apple-input.ant-input:hover,
+.ant-input-affix-wrapper.apple-input-style:hover {
+  border-color: var(--system-gray-3);
+  background: #fff;
+}
+
+.apple-input .ant-input-affix-wrapper-focused,
+.apple-input.ant-input-affix-wrapper-focused,
+.apple-input.ant-input:focus,
+.ant-input-affix-wrapper.apple-input-style:focus,
+.ant-input-affix-wrapper-focused.apple-input-style {
+  border-color: var(--system-blue);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+  background: #fff;
+}
+
+.apple-input input,
+.ant-input-affix-wrapper.apple-input-style input {
+  background: transparent !important;
+}
+
+/* Button */
+.apple-button.ant-btn {
+  height: 50px;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.2px;
+}
+
+.apple-button.ant-btn-primary {
+  background: var(--system-blue);
+  border: none;
+}
+
+.apple-button.ant-btn-primary:hover {
+  background: var(--system-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3);
+}
+
+.apple-button.ant-btn-text {
+  color: var(--system-gray);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.apple-button.ant-btn-text:hover {
+  background: rgba(0,0,0,0.05);
+  color: var(--system-blue);
+}
+
+/* Alert */
+.apple-alert.ant-alert {
+  border-radius: 14px;
+  border: none;
+  background: rgba(255, 59, 48, 0.1);
+  border-left: 4px solid var(--system-red);
+  backdrop-filter: blur(10px);
+}
+
+/* --- Utilities --- */
+
+.glass-panel {
+  background: var(--material-glass);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255,255,255,0.5);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Hide AntD default outlines if conflicting */
+.ant-btn:focus-visible {
+  outline: none;
+}

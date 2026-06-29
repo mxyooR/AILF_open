@@ -1,0 +1,234 @@
+.inference-worker-step {
+  padding: 4px;
+  background: transparent;
+  min-height: auto;
+}
+
+.inference-worker-step .runtime-chart-grid {
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.inference-worker-step .runtime-chart-card {
+  min-height: 360px;
+}
+
+.runtime-gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.runtime-gauge-item {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.65);
+  padding: 14px 10px 12px;
+  text-align: center;
+}
+
+.runtime-gauge-item .ant-progress {
+  margin-bottom: 4px;
+}
+
+.runtime-gauge-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.runtime-gauge-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.runtime-chart-switcher {
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.runtime-line-chart-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.62);
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.runtime-line-chart-svg {
+  display: block;
+}
+
+.runtime-line-grid {
+  stroke: rgba(148, 163, 184, 0.28);
+  stroke-width: 1;
+}
+
+.runtime-line-x-label,
+.runtime-line-y-label {
+  font-size: 10px;
+  fill: #64748b;
+}
+
+.duration-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.duration-summary-grid-detailed {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.duration-summary-item {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.7);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.duration-summary-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.duration-summary-value {
+  font-size: 15px;
+  color: #0f172a;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.duration-empty {
+  min-height: 250px;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.32);
+  background: rgba(248, 250, 252, 0.55);
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.duration-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.inference-worker-step .auto-refresh-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.inference-worker-step .unified-step-header,
+.inference-worker-step .unified-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08) !important;
+}
+
+.inference-worker-step .unified-step-header {
+  margin-bottom: 16px;
+}
+
+.inference-worker-step .unified-step-title {
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+
+.inference-worker-step .unified-step-description {
+  color: #64748b;
+}
+
+.inference-meta-row {
+  margin-bottom: 16px;
+}
+
+.inference-worker-step .ant-table {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.inference-worker-step .ant-table-thead > tr > th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+}
+
+.inference-worker-step .ant-tabs-tab {
+  font-weight: 600;
+}
+
+.inference-worker-step .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #0b66d4 !important;
+}
+
+.inference-worker-step .ant-tabs-ink-bar {
+  background: linear-gradient(90deg, #0ea5e9, #2563eb);
+}
+
+.runtime-double-table {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.redis-preview-cell {
+  max-width: 560px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inference-worker-step .step-actions {
+  margin-top: 24px;
+  padding: 16px 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+@media (max-width: 1024px) {
+  .inference-worker-step .runtime-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-gauge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .duration-summary-grid,
+  .duration-summary-grid-detailed {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .inference-worker-step .runtime-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-chart-switcher {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .duration-summary-grid,
+  .duration-summary-grid-detailed {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,288 @@
+/* 工作流画布样式 - Apple风格设计 */
+
+/* 强制禁用所有呼吸效果和动画 */
+.workflow-canvas-container,
+.workflow-canvas-container *,
+.config-page .workflow-canvas-container,
+.config-page .workflow-canvas-container * {
+  animation: none !important;
+  background-attachment: scroll !important;
+}
+
+.workflow-canvas-container {
+  display: flex;
+  gap: 20px;
+  height: 600px;
+  padding: 20px;
+  background: #ffffff !important;
+  border-radius: 12px;
+  position: relative;
+}
+
+/* 左侧工具区域 */
+.workflow-sidebar {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 工作流操作按钮区域 */
+.workflow-actions {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+/* 保存按钮样式 */
+.save-workflow-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.save-workflow-btn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3) !important;
+}
+
+.save-workflow-btn:active {
+  transform: translateY(0) !important;
+}
+
+/* 画布区域 */
+.workflow-canvas {
+  flex: 1;
+  background: #ffffff;
+  border: 2px solid rgba(0, 0, 0, 0.04);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  min-height: 500px;
+}
+
+.workflow-canvas:hover {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.workflow-canvas.readonly {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+/* 画布加载状态 */
+.canvas-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* 工作流节点样式 */
+.workflow-node {
+  min-width: 120px;
+  max-width: 200px;
+  background: #ffffff;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.workflow-node:hover {
+  border-color: #007aff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.workflow-node.selected {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+}
+
+/* 节点头部 */
+.node-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.node-icon {
+  font-size: 16px;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1d1d1f;
+  flex: 1;
+}
+
+/* 节点描述 */
+.node-description {
+  font-size: 12px;
+  color: #86868b;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* 不同类型节点的颜色 */
+.workflow-node-start {
+  border-color: #52c41a;
+  background: linear-gradient(135deg, #f6ffed 0%, #ffffff 100%);
+}
+
+.workflow-node-start .node-icon {
+  color: #52c41a;
+}
+
+.workflow-node-api_call {
+  border-color: #1890ff;
+  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+}
+
+.workflow-node-api_call .node-icon {
+  color: #1890ff;
+}
+
+.workflow-node-user_input {
+  border-color: #722ed1;
+  background: linear-gradient(135deg, #f9f0ff 0%, #ffffff 100%);
+}
+
+.workflow-node-user_input .node-icon {
+  color: #722ed1;
+}
+
+.workflow-node-condition {
+  border-color: #fa8c16;
+  background: linear-gradient(135deg, #fff7e6 0%, #ffffff 100%);
+}
+
+.workflow-node-condition .node-icon {
+  color: #fa8c16;
+}
+
+.workflow-node-notification {
+  border-color: #eb2f96;
+  background: linear-gradient(135deg, #fff0f6 0%, #ffffff 100%);
+}
+
+.workflow-node-notification .node-icon {
+  color: #eb2f96;
+}
+
+.workflow-node-end {
+  border-color: #f5222d;
+  background: linear-gradient(135deg, #fff1f0 0%, #ffffff 100%);
+}
+
+.workflow-node-end .node-icon {
+  color: #f5222d;
+}
+
+/* 工作流边样式 */
+.workflow-edge {
+  stroke: #d1d5db;
+  stroke-width: 2;
+  fill: none;
+  transition: all 0.2s ease;
+}
+
+.workflow-edge:hover {
+  stroke: #007aff;
+  stroke-width: 3;
+}
+
+.workflow-arrow {
+  fill: #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.workflow-edge:hover + .workflow-arrow {
+  fill: #007aff;
+}
+
+/* 边条件标签 */
+.edge-condition {
+  background: #ffffff;
+  border: 1px solid #e1e5e9;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #86868b;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .workflow-canvas-container {
+    flex-direction: column;
+    height: auto;
+    gap: 12px;
+    padding: 12px;
+  }
+  
+  .workflow-canvas {
+    height: 400px;
+  }
+  
+  .workflow-node {
+    min-width: 100px;
+    max-width: 160px;
+    padding: 8px;
+  }
+  
+  .node-title {
+    font-size: 13px;
+  }
+  
+  .node-description {
+    font-size: 11px;
+  }
+}
+
+/* 动画效果 */
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.workflow-node {
+  animation: nodeAppear 0.3s ease-out;
+}
+
+@keyframes edgeDrawing {
+  from {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 0;
+  }
+}
+
+.workflow-edge.new {
+  animation: edgeDrawing 0.5s ease-out;
+} 

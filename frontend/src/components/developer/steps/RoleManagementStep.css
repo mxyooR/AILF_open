@@ -1,0 +1,298 @@
+/**
+ * 角色管理步骤样式
+ */
+
+.role-management-step {
+  padding: 0; /* Removed extra padding to align with other steps */
+  background: transparent;
+  min-height: calc(100vh - 200px); /* Match other steps height calculation */
+}
+
+.role-management-step .ant-card {
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.role-management-step .ant-card-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+  border-radius: 20px 20px 0 0;
+}
+
+.role-management-step .ant-card-head-title {
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.role-management-step .ant-table {
+  background: white;
+  border-radius: 8px;
+}
+
+.role-management-step .ant-table-thead > tr > th {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.role-management-step .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.role-management-step .ant-table-tbody > tr:hover > td {
+  background: rgba(0, 122, 255, 0.02);
+}
+
+/* 统计卡片样式 */
+.role-management-step .ant-statistic {
+  text-align: center;
+}
+
+.step-statistics {
+  margin-bottom: 24px;
+  display: flex;
+  gap: 16px;
+}
+
+.step-statistics .stats-card {
+  flex: 1;
+}
+
+.role-management-step .ant-statistic-title {
+  color: #86909c;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.role-management-step .ant-statistic-content {
+  color: #1d1d1f;
+  font-weight: 600;
+}
+
+.role-management-step .ant-statistic-content-prefix {
+  margin-right: 8px;
+  color: #007aff;
+}
+
+/* 标签样式 */
+.role-management-step .ant-tag {
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border: none;
+}
+
+/* 徽章样式 */
+.role-management-step .ant-badge {
+  font-weight: 500;
+}
+
+.role-management-step .ant-badge-count {
+  border-radius: 10px;
+  font-size: 12px;
+  min-width: 20px;
+  height: 20px;
+  line-height: 18px;
+}
+
+/* 按钮样式 */
+.role-management-step .ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.role-management-step .ant-btn-primary {
+  background: #007aff;
+  border-color: #007aff;
+  box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
+}
+
+.role-management-step .ant-btn-primary:hover {
+  background: #0056cc;
+  border-color: #0056cc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+}
+
+.role-management-step .ant-btn-text {
+  color: #86909c;
+  border: none;
+  background: transparent;
+}
+
+.role-management-step .ant-btn-text:hover {
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.06);
+}
+
+.role-management-step .ant-btn-text.ant-btn-dangerous:hover {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.06);
+}
+
+/* 模态框样式 */
+.role-management-step .ant-modal {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.role-management-step .ant-modal-header {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 20px 24px;
+}
+
+.role-management-step .ant-modal-title {
+  font-weight: 600;
+  color: #1d1d1f;
+  font-size: 16px;
+}
+
+.role-management-step .ant-modal-body {
+  padding: 24px;
+}
+
+.role-management-step .ant-modal-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 16px 24px;
+  background: #ffffff;
+}
+
+/* 表单样式 */
+.role-management-step .ant-form-item-label > label {
+  font-weight: 500;
+  color: #1d1d1f;
+}
+
+.role-management-step .ant-input,
+.role-management-step .ant-select-selector,
+.role-management-step .ant-input-number {
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.role-management-step .ant-input:focus,
+.role-management-step .ant-select-focused .ant-select-selector,
+.role-management-step .ant-input-number:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+}
+
+.role-management-step .ant-input::placeholder {
+  color: #86909c;
+}
+
+/* 选择器样式 */
+.role-management-step .ant-select-dropdown {
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e8e8e8;
+}
+
+.role-management-step .ant-select-item {
+  border-radius: 6px;
+  margin: 2px 4px;
+}
+
+.role-management-step .ant-select-item-option-selected {
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+  font-weight: 500;
+}
+
+/* 确认框样式 */
+.role-management-step .ant-popconfirm {
+  border-radius: 8px;
+}
+
+.role-management-step .ant-popconfirm-inner {
+  border-radius: 8px;
+}
+
+.role-management-step .ant-popconfirm-message {
+  color: #1d1d1f;
+}
+
+.role-management-step .ant-popconfirm-description {
+  color: #86909c;
+  margin-top: 4px;
+}
+
+/* 底部操作按钮 */
+.step-actions {
+  margin-top: 32px;
+  padding: 24px 0; /* Removed horizontal padding */
+  background: transparent; /* Changed from white */
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .role-management-step {
+    padding: 16px;
+  }
+  
+  .role-management-step .ant-table {
+    font-size: 12px;
+  }
+  
+  .role-management-step .ant-modal {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+  }
+  
+  .step-actions {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .role-management-step {
+    background: #1a1a1a;
+  }
+  
+  .role-management-step .ant-card {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+  }
+  
+  .role-management-step .ant-card-head {
+    background: #333;
+    border-bottom-color: #3a3a3a;
+  }
+  
+  .role-management-step .ant-card-head-title {
+    color: #ffffff;
+  }
+  
+  .role-management-step .ant-table {
+    background: #2a2a2a;
+  }
+  
+  .role-management-step .ant-table-thead > tr > th {
+    background: #333;
+    border-bottom-color: #3a3a3a;
+    color: #ffffff;
+  }
+  
+  .role-management-step .ant-table-tbody > tr > td {
+    border-bottom-color: #3a3a3a;
+    color: #ffffff;
+  }
+  
+  .role-management-step .ant-table-tbody > tr:hover > td {
+    background: #333;
+  }
+}

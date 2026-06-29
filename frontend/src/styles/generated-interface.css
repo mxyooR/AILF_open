@@ -1,0 +1,266 @@
+/* 生成界面独立样式 - 不继承主页面的呼吸效果 */
+
+/* 生成界面body样式重置 */
+body.generated-interface-body {
+  background: #ffffff !important;
+  animation: none !important;
+  background-image: none !important;
+  background-attachment: initial !important;
+  background-position: initial !important;
+  filter: none !important;
+}
+
+/* 生成界面容器 */
+.generated-interface {
+  background: #ffffff;
+  animation: none !important;
+}
+
+/* 禁用大部分动画，但排除 SiriOrb */
+.generated-interface *:not(.siri-orb-wrapper):not(.siri-orb-wrapper *):not(.siri-orb-button):not(.siri-orb-button *):not(.loading):not(.spinner) {
+  animation: none !important;
+}
+
+/* 确保 SiriOrb 可以播放动画 */
+.generated-interface .siri-orb-wrapper,
+.generated-interface .siri-orb-wrapper *,
+.generated-interface .siri-orb-button,
+.generated-interface .siri-orb-button * {
+  animation: initial;
+}
+
+/* amis组件样式重置 - 排除 SiriOrb */
+.amis-render-area {
+  animation: none !important;
+}
+
+.amis-render-area *:not(.siri-orb-wrapper):not(.siri-orb-wrapper *):not(.siri-orb-button):not(.siri-orb-button *):not(.siri-orb-container):not(.siri-orb-container *) {
+  animation: none !important;
+}
+
+/* amis scope样式重置 */
+.amis-scope *,
+.cxd-Page *,
+.cxd-Form *,
+.cxd-Table *,
+.cxd-Card *,
+.cxd-Panel *,
+.cxd-Wrapper *,
+.cxd-Container *,
+.cxd-Grid *,
+.cxd-HBox *,
+.cxd-VBox *,
+.cxd-Flex *,
+.cxd-Button *,
+.cxd-ButtonGroup *,
+.cxd-Nav *,
+.cxd-Tabs *,
+.cxd-Collapse *,
+.cxd-Divider *,
+.cxd-Spinner *,
+.cxd-Alert *,
+.cxd-Toast *,
+.cxd-Dialog *,
+.cxd-Drawer *,
+.cxd-PopOver *,
+.cxd-DropDown *,
+.cxd-Select *,
+.cxd-Tree *,
+.cxd-TreeSelect *,
+.cxd-Transfer *,
+.cxd-TabsTransfer *,
+.cxd-Picker *,
+.cxd-Switch *,
+.cxd-Range *,
+.cxd-Rating *,
+.cxd-LocationPicker *,
+.cxd-SubForm *,
+.cxd-RichText *,
+.cxd-Editor *,
+.cxd-DiffEditor *,
+.cxd-CodeEditor *,
+.cxd-JSONSchemaEditor *,
+.cxd-FormulaEditor *,
+.cxd-ConditionBuilder *,
+.cxd-InputGroup *,
+.cxd-InputRange *,
+.cxd-InputRating *,
+.cxd-InputDate *,
+.cxd-InputDateRange *,
+.cxd-InputTime *,
+.cxd-InputTimeRange *,
+.cxd-InputDateTime *,
+.cxd-InputDateTimeRange *,
+.cxd-InputMonthRange *,
+.cxd-InputQuarterRange *,
+.cxd-InputYearRange *,
+.cxd-InputFile *,
+.cxd-InputImage *,
+.cxd-InputExcel *,
+.cxd-InputTree *,
+.cxd-InputTag *,
+.cxd-InputColor *,
+.cxd-InputPassword *,
+.cxd-InputEmail *,
+.cxd-InputUrl *,
+.cxd-InputText *,
+.cxd-Textarea *,
+.cxd-InputNumber *,
+.cxd-NumberInput *,
+.cxd-Checkboxes *,
+.cxd-Radios *,
+.cxd-Checkbox *,
+.cxd-Radio *,
+.cxd-ListSelect *,
+.cxd-ButtonSelect *,
+.cxd-ButtonToolbar *,
+.cxd-Combo *,
+.cxd-InputArray *,
+.cxd-MatrixCheckboxes *,
+.cxd-NestedSelect *,
+.cxd-CascaderSelect *,
+.cxd-ChainedSelect *,
+.cxd-InputCity *,
+.cxd-InputTable *,
+.cxd-InputKV *,
+.cxd-InputRepeat *,
+.cxd-UUID *,
+.cxd-LocationPicker *,
+.cxd-InputSubForm *,
+.cxd-Hidden *,
+.cxd-Static *,
+.cxd-PlainText *,
+.cxd-Tpl *,
+.cxd-Html *,
+.cxd-Icon *,
+.cxd-Link *,
+.cxd-Mapping *,
+.cxd-Progress *,
+.cxd-Status *,
+.cxd-Date *,
+.cxd-DateTime *,
+.cxd-Time *,
+.cxd-Json *,
+.cxd-List *,
+.cxd-Each *,
+.cxd-Operation *,
+.cxd-ButtonGroup *,
+.cxd-AnchorNav *,
+.cxd-Steps *,
+.cxd-Wizard *,
+.cxd-Chart *,
+.cxd-Sparkline *,
+.cxd-Carousel *,
+.cxd-Image *,
+.cxd-Images *,
+.cxd-Avatar *,
+.cxd-QRCode *,
+.cxd-Barcode *,
+.cxd-IFrame *,
+.cxd-Video *,
+.cxd-Audio *,
+.cxd-Tasks *,
+.cxd-CRUD *,
+.cxd-CRUD2 *,
+.cxd-TableView *,
+.cxd-Cards *,
+.cxd-List *,
+.cxd-PaginationWrapper *,
+.cxd-Service *,
+.cxd-WebComponent *,
+.cxd-SearchBox *,
+.cxd-TableCell *,
+.cxd-ColumnToggler *,
+.cxd-HeadCellSearchDropDown *,
+.cxd-HeadCellFilterDropDown *,
+.cxd-TableBody *,
+.cxd-TableHead *,
+.cxd-TableRow *,
+.cxd-TableCol *,
+.cxd-TableFoot *,
+.cxd-TableCaption *,
+.cxd-TableColGroup *,
+.cxd-TableThead *,
+.cxd-TableTbody *,
+.cxd-TableTfoot *,
+.cxd-TableTr *,
+.cxd-TableTd *,
+.cxd-TableTh * {
+  animation: none !important;
+}
+
+/* 确保没有任何呼吸相关的动画 */
+.generated-interface [class*="breathe"],
+.generated-interface [class*="glow"],
+.generated-interface [class*="pulse"],
+.generated-interface [class*="float"] {
+  animation: none !important;
+}
+
+/* 生成界面特定的动画禁用 */
+.generated-interface .app-name,
+.generated-interface .ailf-title,
+.generated-interface .placeholder-text,
+.generated-interface .ai-response,
+.generated-interface .user-transcript {
+  animation: none !important;
+}
+
+/* 保留必要的交互动画 */
+.generated-interface .close-button,
+.generated-interface .generated-mic-button {
+  animation: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.generated-interface .close-button:hover,
+.generated-interface .generated-mic-button:hover {
+  animation: none !important;
+  transform: scale(1.05) !important;
+}
+
+/* 生成界面加载动画（保留必要的加载动画） */
+.generated-interface .loading,
+.generated-interface .spinner {
+  animation: spin 1s linear infinite !important;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 生成界面过渡动画（保留必要的过渡动画） */
+.generated-interface .fade-in {
+  animation: fadeIn 0.3s ease-in !important;
+}
+
+.generated-interface .slide-in {
+  animation: slideIn 0.3s ease-out !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* 禁用所有其他动画 - 排除 SiriOrb */
+.generated-interface *:not(.loading):not(.spinner):not(.fade-in):not(.slide-in):not(.siri-orb-wrapper):not(.siri-orb-button):not(.siri-orb-container):not([class*="siri"]) {
+  animation: none !important;
+}
+
+/* 强制恢复 SiriOrb 动画 */
+.generated-interface .siri-orb-container,
+.generated-interface .siri-orb-container *,
+.generated-interface .siri-orb-wrapper,
+.generated-interface .siri-orb-wrapper *,
+.generated-interface .siri-orb-wrapper::before,
+.generated-interface .siri-orb-button,
+.generated-interface .siri-orb-button * {
+  animation: revert !important;
+}

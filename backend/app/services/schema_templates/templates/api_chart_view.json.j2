@@ -1,0 +1,171 @@
+{
+  "type": "page",
+  "title": "{{ slot_values.get('page_title','数据图表') }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ slot_values.get('user_message','已自动加载统计图表数据') }}",
+      "showIcon": true
+    },
+    {
+      "type": "service",
+      "name": "chartService",
+      "api": {
+        "method": "{{ api_method | lower }}",
+        "url": "{{ api_url }}",
+        "data": { "&": "$$" },
+        "adaptor": {{ api_adaptor | default('') | tojson }}
+      },
+      "body": [
+        {
+          "type": "alert",
+          "level": "success",
+          "showIcon": true,
+          "body": "${__api_message__|default:\"请求成功\"}",
+          "visibleOn": "this.__api_code__ == 200 || this.__api_message__"
+        },
+        {
+          "type": "grid",
+          "columns": [
+            {
+              "md": 4,
+              "body": [
+                {
+                  "type": "card",
+                  "header": {
+                    "title": "车票总量"
+                  },
+                  "body": [
+                    {
+                      "type": "tpl",
+                      "tpl": "<div style='font-size:32px;font-weight:700;'>${summary.ticket_total|default:0}</div>"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "md": 4,
+              "body": [
+                {
+                  "type": "card",
+                  "header": {
+                    "title": "总收入(元)"
+                  },
+                  "body": [
+                    {
+                      "type": "tpl",
+                      "tpl": "<div style='font-size:32px;font-weight:700;'>${summary.revenue_total|default:0}</div>"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "md": 4,
+              "body": [
+                {
+                  "type": "card",
+                  "header": {
+                    "title": "状态类型数"
+                  },
+                  "body": [
+                    {
+                      "type": "tpl",
+                      "tpl": "<div style='font-size:32px;font-weight:700;'>${summary.status_types|default:0}</div>"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "visibleOn": "this.summary"
+        },
+        {
+          "type": "chart",
+          "height": 360,
+          "config": {
+            "title": {
+              "text": "车票趋势",
+              "left": "center"
+            },
+            "tooltip": {
+              "trigger": "axis"
+            },
+            "xAxis": {
+              "type": "category",
+              "data": "${categories}"
+            },
+            "yAxis": {
+              "type": "value"
+            },
+            "series": [
+              {
+                "name": "车票数",
+                "type": "line",
+                "smooth": true,
+                "data": "${values}"
+              }
+            ]
+          },
+          "visibleOn": "this.categories && this.categories.length && this.values && this.values.length"
+        },
+        {
+          "type": "chart",
+          "height": 360,
+          "config": {
+            "title": {
+              "text": "状态占比",
+              "left": "center"
+            },
+            "tooltip": {
+              "trigger": "item",
+              "formatter": "{b}: {c} ({d}%)"
+            },
+            "legend": {
+              "top": "bottom"
+            },
+            "series": [
+              {
+                "name": "票务状态",
+                "type": "pie",
+                "radius": [
+                  "35%",
+                  "65%"
+                ],
+                "data": "${pie_data}"
+              }
+            ]
+          },
+          "visibleOn": "this.pie_data && this.pie_data.length"
+        },
+        {
+          "type": "table",
+          "title": "返回字段",
+          "source": "${__api_kv__}",
+          "columns": [
+            {
+              "name": "label",
+              "label": "字段",
+              "type": "text"
+            },
+            {
+              "name": "value",
+              "label": "值",
+              "type": "text"
+            }
+          ],
+          "visibleOn": "this.__api_kv__ && this.__api_kv__.length"
+        },
+        {
+          "type": "alert",
+          "level": "warning",
+          "showIcon": true,
+          "body": "接口已返回成功，但当前数据不包含可视化图表字段。",
+          "visibleOn": "!(this.categories && this.categories.length && this.values && this.values.length) && !(this.pie_data && this.pie_data.length)"
+        }
+      ]
+    }
+  ]
+}

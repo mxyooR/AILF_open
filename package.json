@@ -1,0 +1,51 @@
+{
+    "name":  "ailf-project",
+    "version":  "2.0.0",
+    "description":  "AILF - 智能前端生成框架",
+    "private":  true,
+    "workspaces":  [
+                       "frontend",
+                       "backend"
+                   ],
+    "scripts":  {
+                    "dev":  "pnpm run --parallel dev",
+                    "dev:frontend":  "pnpm --filter frontend dev",
+                    "dev:backend":  "pnpm --filter backend dev",
+                    "build":  "pnpm run --recursive build",
+                    "build:frontend":  "pnpm --filter frontend build",
+                    "test":  "pnpm run --recursive test",
+                    "test:frontend":  "pnpm --filter frontend test",
+                    "install:all":  "pnpm install",
+                    "clean":  "pnpm run --recursive clean",
+                    "lint":  "pnpm run --recursive lint",
+                    "start":  "pnpm run dev"
+                },
+    "keywords":  [
+                     "ai",
+                     "frontend",
+                     "react",
+                     "typescript",
+                     "amis",
+                     "voice-interface",
+                     "natural-language"
+                 ],
+    "author":  "AILF Team",
+    "license":  "Apache-2.0",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "https://github.com/ailf-team/ailf.git"
+                   },
+    "engines":  {
+                    "node":  "\u003e=16.0.0",
+                    "pnpm":  "\u003e=8.0.0"
+                },
+    "packageManager":  "pnpm@10.13.1",
+    "dependencies":  {
+                         "react-router-dom":  "^7.7.0"
+                     },
+    "pnpm": {
+      "overrides": {
+        "react-pdf": "9.0.0"
+      }
+    }
+}

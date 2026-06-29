@@ -1,0 +1,65 @@
+{
+  "type": "page",
+  "title": "{{ slot_values.get('page_title','') }}",
+  "workflow_id": "{{ workflow_id }}",
+  "current_node_id": "{{ node_id }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ slot_values.get('user_message','') }}",
+      "showIcon": true
+    },
+    {
+      "type": "service",
+      "api": {
+        "method": "get",
+        "url": "{{ api_endpoint }}"
+      },
+      "body": {
+        "type": "table",
+        "source": "${{{ table_source }}}",
+        "columns": [
+          {% for field in fields %}
+          {
+            "name": "{{ field.name }}",
+            "label": "{{ slot_values.get('field_label_' ~ field.name, '') }}"
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        ]
+      }
+    },
+    {
+      "type": "form",
+      "api": {
+        "method": "post",
+        "url": "/api/v1/workflow/state",
+        "data": {
+          "workflow_id": "{{ workflow_id }}",
+          "node_id": "{{ node_id }}",
+          "action": "next",
+          "&": "$$"
+        },
+        "requestAdaptor": "api.data = {...api.data, ...api.body}; return api;"
+      },
+      "body": [
+        {% for output in outputs %}
+        {% if output.type != "array" %}
+        {
+          "type": "hidden",
+          "name": "{{ output.name }}",
+          "value": "${{{ output.name }}}"
+        }{% if not loop.last %},{% endif %}
+        {% endif %}
+        {% endfor %}
+      ],
+      "actions": [
+        {
+          "type": "submit",
+          "label": "{{ slot_values.get('continue_button_text','') }}",
+          "level": "primary"
+        }
+      ]
+    }
+  ]
+}

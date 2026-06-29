@@ -1,0 +1,8 @@
+/* AILF - 智能前端生成框架 - 主样式文件 */
+
+/* 导入模块化样式 */
+@import './styles/base.css';
+@import './styles/animations.css';
+@import './styles/siri-lines.css';
+@import './styles/text.css';
+@import './styles/components.css';

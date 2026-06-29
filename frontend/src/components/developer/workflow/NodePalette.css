@@ -1,0 +1,228 @@
+/* 节点调色板样式 - Apple风格设计 */
+
+.node-palette {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.palette-card {
+  background: #ffffff;
+  border: 1px solid #e1e5e9;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.palette-card .ant-card-head {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e1e5e9;
+  padding: 12px 16px;
+  min-height: auto;
+}
+
+.palette-card .ant-card-head-title {
+  padding: 0;
+}
+
+.palette-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1d1d1f;
+}
+
+.palette-icon {
+  font-size: 16px;
+  color: #007aff;
+}
+
+.palette-card .ant-card-body {
+  padding: 16px;
+}
+
+/* 节点类型网格 */
+.node-types-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.node-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.node-palette-item:hover {
+  background: #f8f9fa;
+  border-color: #007aff;
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.node-palette-item.dragging {
+  opacity: 0.6;
+  transform: scale(0.95);
+}
+
+.node-palette-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+  background: #f5f5f5;
+  border-color: #d9d9d9 !important;
+}
+
+.node-palette-item.disabled:hover {
+  background: #f5f5f5 !important;
+  border-color: #d9d9d9 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.node-palette-item.disabled .node-label {
+  color: #d9d9d9 !important;
+}
+
+.node-palette-item.disabled::after {
+  display: none;
+}
+
+.node-palette-item .node-icon {
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.node-palette-item .node-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1d1d1f;
+  flex: 1;
+}
+
+/* 提示信息 */
+.palette-tips {
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.tip-text {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* 拖拽状态样式 */
+.node-palette-item[draggable="true"] {
+  position: relative;
+}
+
+.node-palette-item[draggable="true"]::after {
+  content: '⋮⋮';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #86868b;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .node-palette {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  
+  .node-types-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  
+  .node-palette-item {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  
+  .node-palette-item .node-label {
+    font-size: 12px;
+  }
+  
+  .node-palette-item .node-icon {
+    font-size: 16px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* 动画效果 */
+@keyframes paletteItemPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(0, 122, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 122, 255, 0);
+  }
+}
+
+.node-palette-item:active {
+  animation: paletteItemPulse 0.6s ease-out;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .palette-card {
+    background: #1c1c1e;
+    border-color: #38383a;
+  }
+  
+  .palette-card .ant-card-head {
+    background: linear-gradient(135deg, #2c2c2e 0%, #1c1c1e 100%);
+    border-bottom-color: #38383a;
+  }
+  
+  .palette-header {
+    color: #ffffff;
+  }
+  
+  .node-palette-item {
+    background: #2c2c2e;
+    border-color: #38383a;
+  }
+  
+  .node-palette-item:hover {
+    background: #38383a;
+    border-color: #007aff;
+  }
+  
+  .node-palette-item .node-label {
+    color: #ffffff;
+  }
+  
+  .palette-tips {
+    background: #2c2c2e;
+  }
+  
+  .tip-text {
+    color: #98989d;
+  }
+} 

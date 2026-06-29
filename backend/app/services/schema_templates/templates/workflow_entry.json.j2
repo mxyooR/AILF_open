@@ -1,0 +1,96 @@
+{
+  "type": "page",
+  "title": "{{ page_title | default(workflow.name[:6] if workflow.name else '工作流') }}",
+  "workflow_id": "{{ workflow.id or workflow.workflow_id }}",
+  "current_node_id": "{{ node.id }}",
+  "body": [
+    {
+      "type": "alert",
+      "level": "info",
+      "body": "{{ user_message | default('请填写信息') }}",
+      "showIcon": true
+    },
+    {
+      "type": "form",
+      "title": "{{ node.description or '请填写信息' }}",
+      "mode": "{{ form_mode }}",
+      {% if form_mode == "horizontal" %}
+      "horizontal": {"left": 3, "right": 9},
+      "labelAlign": "{{ label_align }}",
+      {% endif %}
+      "api": {
+        "method": "post",
+        "url": "/api/v1/workflow/state",
+        "data": {
+          "workflow_id": "{{ workflow.id or workflow.workflow_id }}",
+          "node_id": "{{ node.id }}",
+          "action": "submit",
+          "&": "$$"
+          {% if api_url %}
+          ,"api_url": "{{ api_url }}"
+          {% endif %}
+          {% if api_method %}
+          ,"api_method": "{{ api_method }}"
+          {% endif %}
+        },
+        "requestAdaptor": "api.data = {...api.data, ...api.body}; return api;"
+      },
+      "body": [
+        {% for field in form_fields %}
+        {
+          "type": "{{ field.type }}",
+          "name": "{{ field.name }}",
+          "label": "{{ field.label }}",
+          "required": {{ field.required | tojson }},
+          "placeholder": "{{ field.placeholder }}"
+          {% if field.format %}
+          ,"format": "{{ field.format }}"
+          {% endif %}
+          {% if field.inputFormat %}
+          ,"inputFormat": "{{ field.inputFormat }}"
+          {% endif %}
+          {% if field.options %}
+          ,"options": {{ field.options | tojson }}
+          {% endif %}
+          {% if field.receiver %}
+          ,"receiver": "{{ field.receiver }}"
+          {% endif %}
+          {% if field.accept %}
+          ,"accept": "{{ field.accept }}"
+          {% endif %}
+          {% if field.limit %}
+          ,"limit": {{ field.limit | tojson }}
+          {% endif %}
+          {% if field.min is defined %}
+          ,"min": {{ field.min }}
+          {% endif %}
+          {% if field.max is defined %}
+          ,"max": {{ field.max }}
+          {% endif %}
+          {% if field.step is defined %}
+          ,"step": {{ field.step }}
+          {% endif %}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+        {% if not form_fields %}
+        {
+          "type": "tpl",
+          "tpl": "<p>{{ empty_form_message | default('暂无需要填写的信息') }}</p>"
+        }
+        {% endif %}
+      ],
+      "submitText": "{{ submit_button_text | default('提交') }}",
+      "actions": [
+        {
+          "type": "submit",
+          "label": "{{ submit_button_text | default('提交') }}",
+          "level": "primary"
+        },
+        {
+          "type": "reset",
+          "label": "{{ reset_button_text | default('重置') }}"
+        }
+      ]
+    }
+  ]
+}

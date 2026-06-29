@@ -1,0 +1,141 @@
+/* 统一表格组件样式 - Apple风格 */
+
+/* 基础表格样式 */
+.unified-table {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.unified-table .ant-table {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+}
+
+.unified-table .ant-table-container {
+  border-radius: var(--radius-md);
+}
+
+/* 表头样式 */
+.unified-table .ant-table-thead > tr > th {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+  padding: 16px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+.unified-table .ant-table-thead > tr > th:first-child {
+  border-top-left-radius: var(--radius-md);
+}
+
+.unified-table .ant-table-thead > tr > th:last-child {
+  border-top-right-radius: var(--radius-md);
+}
+
+/* 表体样式 */
+.unified-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-light);
+  padding: 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  vertical-align: top;
+}
+
+.unified-table .ant-table-tbody > tr {
+  transition: all 0.3s ease;
+}
+
+.unified-table .ant-table-tbody > tr:hover > td {
+  background: rgba(0, 122, 255, 0.02);
+}
+
+.unified-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+/* 分页样式 */
+.unified-table .ant-pagination {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.unified-table .ant-pagination-item {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  font-weight: 500;
+}
+
+.unified-table .ant-pagination-item-active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.unified-table .ant-pagination-item-active a {
+  color: white;
+}
+
+.unified-table .ant-pagination-item:hover {
+  border-color: var(--primary-color);
+}
+
+.unified-table .ant-pagination-item:hover a {
+  color: var(--primary-color);
+}
+
+/* 紧凑变体 */
+.unified-table--compact .ant-table-thead > tr > th {
+  padding: 12px 8px;
+  font-size: 13px;
+}
+
+.unified-table--compact .ant-table-tbody > tr > td {
+  padding: 8px;
+  font-size: 13px;
+}
+
+/* 边框变体 */
+.unified-table--bordered .ant-table-thead > tr > th,
+.unified-table--bordered .ant-table-tbody > tr > td {
+  border-right: 1px solid var(--border-light);
+}
+
+.unified-table--bordered .ant-table-thead > tr > th:last-child,
+.unified-table--bordered .ant-table-tbody > tr > td:last-child {
+  border-right: none;
+}
+
+/* 空状态样式 */
+.unified-table .ant-empty {
+  padding: 40px 0;
+}
+
+.unified-table .ant-empty-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* 加载状态 */
+.unified-table .ant-spin-container {
+  min-height: 200px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .unified-table .ant-table-thead > tr > th {
+    padding: 12px 8px;
+    font-size: 13px;
+  }
+  
+  .unified-table .ant-table-tbody > tr > td {
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+  
+  .unified-table .ant-pagination {
+    margin-top: 16px;
+  }
+}

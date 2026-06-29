@@ -1,0 +1,45 @@
+# =============================================================================
+# AILF Backend — Dockerfile
+# FastAPI 后端服务
+# =============================================================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# 编译依赖 (PyTorch 等需要)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt \
+    && pip install --no-cache-dir --prefix=/install \
+        gunicorn \
+        uvloop
+
+# =============================================================================
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# 运行时依赖 (PyMySQL 连接 MySQL 需要)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-libmysqlclient-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从 builder 阶段复制已安装的依赖
+COPY --from=builder /install /usr/local
+
+# 复制后端代码
+COPY backend/ ./backend/
+COPY Model/ ./Model/
+
+# PYTHONPATH
+ENV PYTHONPATH="/app/backend:${PYTHONPATH}" \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 5000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000"]

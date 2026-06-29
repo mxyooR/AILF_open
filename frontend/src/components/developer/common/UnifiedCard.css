@@ -1,0 +1,184 @@
+/* 统一卡片组件样式 - Apple风格 */
+
+/* 使用 developer-config.css 中的全局变量，这里仅定义组件特有的覆盖或补充 */
+
+/* 基础卡片样式 */
+.unified-card {
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 18px; /* Apple super-ellipse approximation */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  margin-bottom: 24px;
+  overflow: hidden; /* Ensure content doesn't bleed */
+}
+
+.unified-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.unified-card .ant-card-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+  padding: 24px 32px;
+  min-height: 64px;
+}
+
+.unified-card .ant-card-head-title {
+  color: #1d1d1f;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.4px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  padding: 0;
+}
+
+.unified-card .ant-card-body {
+  background: #ffffff;
+  padding: 32px;
+}
+
+/* 头部卡片变体 */
+.unified-card--header {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  margin-bottom: 32px;
+}
+
+.unified-card--header .ant-card-body {
+  padding: 32px;
+  background: transparent;
+}
+
+.unified-card--header:hover {
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+/* 统计卡片变体 */
+.unified-card--stats {
+  text-align: center;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.unified-card--stats:hover {
+  border-color: #007aff;
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.unified-card--stats .ant-card-body {
+  padding: 24px;
+}
+
+/* 内容卡片变体 */
+.unified-card--content {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+.unified-card--content .ant-card-body {
+  padding: 0;
+  overflow-x: auto;
+}
+
+/* 统一步骤头部样式 */
+.unified-step-header {
+  margin-bottom: 32px !important;
+}
+
+.unified-step-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.unified-step-title-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.unified-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #007aff 0%, #00C7BE 100%);
+  color: white;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+}
+
+.unified-step-text {
+  flex: 1;
+}
+
+.unified-step-title {
+  margin: 0 0 4px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1d1d1f;
+  letter-spacing: -0.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+}
+
+.unified-step-description {
+  margin: 0;
+  font-size: 15px;
+  color: #86868b;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+.unified-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .unified-card {
+    margin-bottom: 16px;
+  }
+
+  .unified-card .ant-card-head {
+    padding: 16px 20px;
+  }
+
+  .unified-card .ant-card-body {
+    padding: 20px;
+  }
+
+  .unified-card--header .ant-card-body {
+    padding: 24px;
+  }
+
+  .unified-step-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .unified-step-title-section {
+    width: 100%;
+  }
+
+  .unified-step-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .unified-step-title {
+    font-size: 20px;
+  }
+}

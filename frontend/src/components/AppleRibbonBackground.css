@@ -1,0 +1,247 @@
+/**
+ * Apple-style Aurora Background
+ * 苹果风格极光背景 - 黑色背景 + 巨大模糊流动光斑
+ * 设计理念：Fluid Aurora (流动极光) + Deep Space (深空)
+ */
+
+/* 主容器 */
+.apple-ribbon-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+  background: #000000; /* 纯黑底色 */
+}
+
+/* 纯黑基底 */
+.ribbon-base {
+  position: absolute;
+  inset: 0;
+  background: #000000;
+  z-index: 0;
+}
+
+/* 光斑容器 */
+.ribbon-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  filter: blur(80px); /* 全局模糊，融合光斑 */
+  z-index: 1;
+}
+
+/* 通用光斑样式 */
+.ribbon {
+  position: absolute;
+  border-radius: 50%; /* 圆形光斑 */
+  mix-blend-mode: screen; /* 滤色混合，产生发光感 */
+  will-change: transform, opacity;
+  opacity: 0.6; /* 适中的不透明度 */
+}
+
+/* 光斑1 - 主紫色 - 左上角 */
+.ribbon-1 {
+  top: -15%;
+  left: -15%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.9) 0%, rgba(76, 29, 149, 0) 70%);
+  animation: auroraFloat1 19s infinite ease-in-out, auroraBreathe1 7s infinite ease-in-out;
+  opacity: 0.75;
+}
+
+/* 光斑2 - 蓝色 - 右下角 */
+.ribbon-2 {
+  bottom: -20%;
+  right: -15%;
+  width: 55vw;
+  height: 55vw;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.85) 0%, rgba(30, 58, 138, 0) 70%);
+  animation: auroraFloat2 23s infinite ease-in-out, auroraBreathe2 11s infinite ease-in-out;
+  animation-delay: -5s, -3s;
+  opacity: 0.7;
+}
+
+/* 光斑3 - 深靛蓝 - 右上角 */
+.ribbon-3 {
+  top: -10%;
+  right: -20%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(67, 56, 202, 0.8) 0%, rgba(49, 46, 129, 0) 70%);
+  animation: auroraFloat3 27s infinite ease-in-out, auroraBreathe3 9s infinite ease-in-out;
+  animation-delay: -12s, -7s;
+  opacity: 0.55;
+}
+
+/* 光斑4 - 青色点缀 - 左下角 */
+.ribbon-4 {
+  bottom: -10%;
+  left: -10%;
+  width: 35vw;
+  height: 35vw;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.7) 0%, rgba(8, 145, 178, 0) 70%);
+  animation: auroraFloat4 17s infinite ease-in-out, auroraBreathe4 5s infinite ease-in-out;
+  animation-delay: -8s, -2s;
+  opacity: 0.6;
+}
+
+/* 光斑5 - 紫红 - 顶部中间 */
+.ribbon-5 {
+  top: -25%;
+  left: 30%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(192, 38, 211, 0.7) 0%, rgba(124, 58, 237, 0) 70%);
+  animation: auroraFloat5 21s infinite ease-in-out, auroraBreathe5 13s infinite ease-in-out;
+  animation-delay: -3s, -9s;
+  opacity: 0.55;
+}
+
+/* 额外的环境辉光层 - 位于顶层，增加整体氛围 */
+.ribbon-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ribbon-glow-1 {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.05) 0%, transparent 80%);
+  mix-blend-mode: screen;
+}
+
+.ribbon-glow-2 {
+  display: none; /* 移除多余的辉光 */
+}
+
+/* 噪点纹理 - 增加胶片质感，防止色带断层 */
+.ribbon-noise {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* ========== 极光流动动画 (随机漂移) ========== */
+
+/* 光斑1: 不规则轨迹 */
+@keyframes auroraFloat1 {
+  0% { transform: translate(0, 0) scale(1); }
+  17% { transform: translate(20vw, 10vh) scale(1.1); }
+  33% { transform: translate(30vw, 25vh) scale(0.95); }
+  54% { transform: translate(15vw, 35vh) scale(1.05); }
+  71% { transform: translate(8vw, 18vh) scale(0.9); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* 光斑2: 不规则轨迹 */
+@keyframes auroraFloat2 {
+  0% { transform: translate(0, 0) scale(1); }
+  22% { transform: translate(-15vw, -20vh) scale(1.08); }
+  41% { transform: translate(-25vw, 5vh) scale(0.92); }
+  63% { transform: translate(-10vw, -10vh) scale(1.12); }
+  84% { transform: translate(-18vw, 8vh) scale(0.96); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* 光斑3: 不规则轨迹 */
+@keyframes auroraFloat3 {
+  0% { transform: translate(0, 0) scale(1); }
+  19% { transform: translate(-20vw, 15vh) scale(1.05); }
+  38% { transform: translate(-30vw, 30vh) scale(0.88); }
+  57% { transform: translate(-12vw, 22vh) scale(1.1); }
+  79% { transform: translate(-25vw, 8vh) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* 光斑4: 不规则轨迹 */
+@keyframes auroraFloat4 {
+  0% { transform: translate(0, 0) scale(1); }
+  15% { transform: translate(25vw, 15vh) scale(1.15); }
+  35% { transform: translate(35vw, -5vh) scale(0.85); }
+  58% { transform: translate(18vw, 20vh) scale(1.08); }
+  77% { transform: translate(28vw, 5vh) scale(0.92); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* 光斑5: 不规则轨迹 */
+@keyframes auroraFloat5 {
+  0% { transform: translate(0, 0) scale(1); }
+  23% { transform: translate(15vw, 20vh) scale(0.9); }
+  44% { transform: translate(28vw, 10vh) scale(1.12); }
+  61% { transform: translate(10vw, 30vh) scale(0.95); }
+  82% { transform: translate(22vw, 18vh) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* ========== 呼吸脉动动画 (独立随机周期) ========== */
+
+@keyframes auroraBreathe1 {
+  0%, 100% { opacity: 0.65; }
+  33% { opacity: 0.9; }
+  66% { opacity: 0.7; }
+}
+
+@keyframes auroraBreathe2 {
+  0%, 100% { opacity: 0.6; }
+  25% { opacity: 0.75; }
+  58% { opacity: 0.85; }
+  80% { opacity: 0.65; }
+}
+
+@keyframes auroraBreathe3 {
+  0%, 100% { opacity: 0.5; }
+  40% { opacity: 0.72; }
+  70% { opacity: 0.55; }
+}
+
+@keyframes auroraBreathe4 {
+  0%, 100% { opacity: 0.55; }
+  20% { opacity: 0.8; }
+  50% { opacity: 0.6; }
+  75% { opacity: 0.75; }
+}
+
+@keyframes auroraBreathe5 {
+  0%, 100% { opacity: 0.5; }
+  30% { opacity: 0.68; }
+  55% { opacity: 0.55; }
+  85% { opacity: 0.72; }
+}
+
+/* ========== 响应式调整 ========== */
+
+@media (max-width: 768px) {
+  .ribbon {
+    width: 80vw;
+    height: 80vw;
+    filter: blur(60px);
+  }
+  
+  /* 移动端位置微调，防止过于拥挤 */
+  .ribbon-1 { top: 10%; left: 10%; }
+  .ribbon-2 { bottom: 5%; right: 5%; }
+  .ribbon-3 { width: 100vw; height: 100vw; }
+}
+
+/* ========== 减少动画 - 用户偏好 ========== */
+
+@media (prefers-reduced-motion: reduce) {
+  .ribbon {
+    animation: none;
+  }
+}

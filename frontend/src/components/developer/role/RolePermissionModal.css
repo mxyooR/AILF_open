@@ -1,0 +1,346 @@
+/**
+ * 角色权限管理模态框样式
+ */
+
+.role-permission-modal {
+  /* 基础样式 */
+}
+
+.role-permission-modal .ant-modal {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.role-permission-modal .ant-modal-header {
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 20px 24px;
+}
+
+.role-permission-modal .ant-modal-title {
+  font-weight: 600;
+  color: #1d1d1f;
+  font-size: 16px;
+}
+
+.role-permission-modal .ant-modal-body {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.role-permission-modal .ant-modal-footer {
+  border-top: 1px solid #f0f0f0;
+  padding: 16px 24px;
+  background: #fafafa;
+}
+
+/* 标签页样式 */
+.role-permission-modal .ant-tabs {
+  margin: -8px 0;
+}
+
+.role-permission-modal .ant-tabs-tab {
+  font-weight: 500;
+  color: #86909c;
+}
+
+.role-permission-modal .ant-tabs-tab-active {
+  color: #007aff;
+}
+
+.role-permission-modal .ant-tabs-ink-bar {
+  background: #007aff;
+}
+
+.role-permission-modal .ant-tabs-content-holder {
+  padding-top: 16px;
+}
+
+/* 统计卡片样式 */
+.role-permission-modal .ant-card {
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.role-permission-modal .ant-statistic {
+  text-align: center;
+}
+
+.role-permission-modal .ant-statistic-title {
+  color: #86909c;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.role-permission-modal .ant-statistic-content {
+  color: #1d1d1f;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.role-permission-modal .ant-statistic-content-prefix {
+  margin-right: 6px;
+  color: #007aff;
+  font-size: 14px;
+}
+
+/* 搜索和过滤器样式 */
+.role-permission-modal .ant-input,
+.role-permission-modal .ant-select-selector {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.role-permission-modal .ant-input:focus,
+.role-permission-modal .ant-select-focused .ant-select-selector {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+}
+
+.role-permission-modal .ant-input::placeholder {
+  color: #86909c;
+}
+
+/* 按钮样式 */
+.role-permission-modal .ant-btn {
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.role-permission-modal .ant-btn-primary {
+  background: #007aff;
+  border-color: #007aff;
+  box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
+}
+
+.role-permission-modal .ant-btn-primary:hover {
+  background: #0056cc;
+  border-color: #0056cc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+}
+
+.role-permission-modal .ant-btn-primary:disabled {
+  background: #d1d5db;
+  border-color: #d1d5db;
+  transform: none;
+  box-shadow: none;
+}
+
+.role-permission-modal .ant-btn:not(.ant-btn-primary) {
+  color: #86909c;
+  border-color: #d1d5db;
+  background: white;
+}
+
+.role-permission-modal .ant-btn:not(.ant-btn-primary):hover {
+  color: #007aff;
+  border-color: #007aff;
+  background: rgba(0, 122, 255, 0.04);
+}
+
+/* 表格样式 */
+.role-permission-modal .ant-table {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+.role-permission-modal .ant-table-thead > tr > th {
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  font-weight: 600;
+  color: #1d1d1f;
+  font-size: 13px;
+}
+
+.role-permission-modal .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f5f5f5;
+  font-size: 13px;
+}
+
+.role-permission-modal .ant-table-tbody > tr:hover > td {
+  background: #f8f9fa;
+}
+
+.role-permission-modal .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+/* 标签样式 */
+.role-permission-modal .ant-tag {
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border: none;
+  margin: 0;
+}
+
+/* 开关样式 */
+.role-permission-modal .ant-switch {
+  background: #d1d5db;
+}
+
+.role-permission-modal .ant-switch-checked {
+  background: #007aff;
+}
+
+.role-permission-modal .ant-switch:focus {
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.role-permission-modal .ant-switch-inner {
+  font-size: 10px;
+}
+
+/* 警告提示样式 */
+.role-permission-modal .ant-alert {
+  border-radius: 8px;
+  border: 1px solid #ffd591;
+  background: #fff7e6;
+}
+
+.role-permission-modal .ant-alert-warning {
+  border-color: #ffd591;
+}
+
+.role-permission-modal .ant-alert-warning .ant-alert-icon {
+  color: #fa8c16;
+}
+
+.role-permission-modal .ant-alert-message {
+  color: #1d1d1f;
+  font-weight: 500;
+}
+
+.role-permission-modal .ant-alert-description {
+  color: #86909c;
+  margin-top: 4px;
+}
+
+/* 分页样式 */
+.role-permission-modal .ant-pagination {
+  margin-top: 16px;
+  text-align: right;
+}
+
+.role-permission-modal .ant-pagination-item {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+.role-permission-modal .ant-pagination-item-active {
+  border-color: #007aff;
+  background: #007aff;
+}
+
+.role-permission-modal .ant-pagination-item-active a {
+  color: white;
+}
+
+.role-permission-modal .ant-pagination-prev,
+.role-permission-modal .ant-pagination-next {
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+.role-permission-modal .ant-pagination-prev:hover,
+.role-permission-modal .ant-pagination-next:hover {
+  border-color: #007aff;
+  color: #007aff;
+}
+
+/* 选择器下拉样式 */
+.role-permission-modal .ant-select-dropdown {
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e8e8e8;
+}
+
+.role-permission-modal .ant-select-item {
+  border-radius: 4px;
+  margin: 2px 4px;
+  font-size: 13px;
+}
+
+.role-permission-modal .ant-select-item-option-selected {
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+  font-weight: 500;
+}
+
+.role-permission-modal .ant-select-item-option-active {
+  background: rgba(0, 122, 255, 0.06);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .role-permission-modal .ant-modal {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+  }
+  
+  .role-permission-modal .ant-modal-body {
+    padding: 16px;
+    max-height: 60vh;
+  }
+  
+  .role-permission-modal .ant-table {
+    font-size: 12px;
+  }
+  
+  .role-permission-modal .ant-statistic-content {
+    font-size: 16px;
+  }
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .role-permission-modal .ant-modal {
+    background: #2a2a2a;
+  }
+  
+  .role-permission-modal .ant-modal-header {
+    background: #333;
+    border-bottom-color: #3a3a3a;
+  }
+  
+  .role-permission-modal .ant-modal-title {
+    color: #ffffff;
+  }
+  
+  .role-permission-modal .ant-modal-footer {
+    background: #333;
+    border-top-color: #3a3a3a;
+  }
+  
+  .role-permission-modal .ant-card {
+    background: #333;
+    border-color: #3a3a3a;
+  }
+  
+  .role-permission-modal .ant-table {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+  }
+  
+  .role-permission-modal .ant-table-thead > tr > th {
+    background: #333;
+    border-bottom-color: #3a3a3a;
+    color: #ffffff;
+  }
+  
+  .role-permission-modal .ant-table-tbody > tr > td {
+    border-bottom-color: #3a3a3a;
+    color: #ffffff;
+  }
+  
+  .role-permission-modal .ant-table-tbody > tr:hover > td {
+    background: #333;
+  }
+}
