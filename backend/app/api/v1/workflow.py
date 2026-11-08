@@ -147,6 +147,11 @@ async def get_user_or_developer(
     # 用户模型用 is_active 标记启用状态，与工作流的 status 字段不同。
     if not user.is_active:
         raise UnifiedResponse.forbidden(message="用户已停用", error_type="user_inactive")
+    if user.role_id:
+        from app.models.role import RoleDBModel
+        role = db.get(RoleDBModel, user.role_id)
+        if role is not None and role.status != "active":
+            raise UnifiedResponse.forbidden(message="用户角色已停用", error_type="role_inactive")
     return {"user_id": user.id, "username": user.username, "user": user}
 
 

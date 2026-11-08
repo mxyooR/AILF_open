@@ -122,15 +122,14 @@ class APIClient {
     retryCount = 0
   ): Promise<APIResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...options.headers as Record<string, string>,
-    };
+    const headers = new Headers(options.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
-    // 添加认证头（优先使用开发者token）
-    const activeToken = this.getActiveToken();
-    if (activeToken) {
-      headers.Authorization = `Bearer ${activeToken}`;
+    // 用户中心和个人通知始终使用用户身份，防止同一浏览器的开发者登录串入个人页面。
+    const isUserEndpoint = /^\/api\/v1\/(?:user(?:\/|$)|notifications(?:[/?]|$))/.test(endpoint);
+    const activeToken = isUserEndpoint ? this.userToken : this.getActiveToken();
+    if (activeToken && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${activeToken}`);
     }
 
     try {
@@ -139,13 +138,18 @@ class APIClient {
         headers,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = { code: response.status, message: '', data: null };
+      if (text) {
+        try { data = JSON.parse(text); }
+        catch { throw new APIError('服务返回了无效响应', response.status, 'INVALID_RESPONSE'); }
+      }
 
       // 认证接口自身不走自动刷新，避免 refresh 请求递归
       const isAuthEndpoint = endpoint.startsWith('/api/v1/auth/');
 
       // 处理401错误（token过期）
-      if (response.status === 401 && retryCount === 0 && this.tokenRefreshCallback && !isAuthEndpoint) {
+      if (response.status === 401 && retryCount === 0 && this.tokenRefreshCallback && !isAuthEndpoint && !isUserEndpoint && !new Headers(options.headers).has('Authorization')) {
         console.log('Token expired, attempting refresh...');
         const newToken = await this.refreshTokenIfNeeded();
 
@@ -169,6 +173,29 @@ class APIClient {
         throw error;
       }
       throw new APIError('网络请求失败', 0, 'NETWORK_ERROR');
+    }
+  }
+
+  /** 动态路由测试使用真实 HTTP 方法，并保留查询参数、调用方认证头和超时。 */
+  async execute<T>(endpoint: string, options: {
+    method: string; params?: Record<string, any>; data?: any;
+    headers?: Record<string, string>; timeout?: number;
+  }): Promise<APIResponse<T>> {
+    const query = new URLSearchParams();
+    Object.entries(options.params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) query.append(key, String(value));
+    });
+    const url = query.toString() ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}${query}` : endpoint;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), options.timeout ?? 10000);
+    try {
+      const method = options.method.toUpperCase();
+      return await this.request<T>(url, {
+        method, headers: options.headers, signal: controller.signal,
+        body: method === 'GET' || method === 'HEAD' || options.data === undefined ? undefined : JSON.stringify(options.data),
+      });
+    } finally {
+      clearTimeout(timer);
     }
   }
 

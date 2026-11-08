@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import '../styles/apple-style.css';
 import axios from 'axios';
+import { buildAmisRequest, canApplyWorkflowResponse, normalizeAmisResponse } from '../services/common/amisTransport';
 import { runAsyncCommand, AsyncCommandResult } from '../services/common/asyncCommand';
 // 移除amis相关导入，使用原生通知
 import copy from 'copy-to-clipboard';
@@ -76,6 +77,8 @@ const MainPage: React.FC = () => {
 
   // 状态管理
   const [amisSchema, setAmisSchema] = useState<any>(null);
+  const latestSchemaRef = useRef<any>(amisSchema);
+  latestSchemaRef.current = amisSchema;
   const [amisKey, setAmisKey] = useState(0);
   const [responseText, setResponseText] = useState('');
   const [errorText, setErrorText] = useState('');
@@ -148,12 +151,9 @@ const MainPage: React.FC = () => {
           }
         }
 
-        const response = await axios({
-          method: api.method || 'get',
-          url: api.url,
-          data: api.data,
-          headers: headers
-        });
+        const submittedSchema = amisSchema;
+        const response = await axios(buildAmisRequest(api, headers));
+        const normalized = normalizeAmisResponse(response.data, response.statusText);
 
         // 检查是否是登录API的响应
         if (api.url && api.url.includes('/login') && response.data && response.data.code === 200) {
@@ -181,6 +181,7 @@ const MainPage: React.FC = () => {
             if (!pendingCommand) {
               // 没有待处理命令，返回主界面并提示
               setTimeout(() => {
+                if (latestSchemaRef.current !== submittedSchema) return;
                 setAmisSchema(null);
                 speak('登录成功！请告诉我您需要什么功能。');
               }, 1000);
@@ -188,6 +189,7 @@ const MainPage: React.FC = () => {
               // 🔥 有待处理命令，关闭登录界面，等待 useEffect 处理
               // 不要在这里说话，让 useEffect 统一处理语音提示
               setTimeout(() => {
+                if (latestSchemaRef.current !== submittedSchema) return;
                 setAmisSchema(null);
               }, 500);
             }
@@ -196,6 +198,10 @@ const MainPage: React.FC = () => {
 
         // 🔥 检查是否是 workflow/state API 的响应（返回新的 AMIS schema）
         if (api.url?.includes('/workflow/state') && response.data) {
+          // 错误页也有 type=page，必须先检查业务状态，再决定是否替换表单。
+          if (normalized.status !== 0) return normalized;
+          const canApply = () => canApplyWorkflowResponse(submittedSchema, latestSchemaRef.current, api.data);
+          if (!canApply()) return { status: 1, msg: '界面已更新，请使用当前表单', data: response.data };
           
           // workflow/state 返回格式: { status: 0, msg: "success", data: { type: "page", ... } }
           const newSchema = response.data.data;
@@ -203,9 +209,10 @@ const MainPage: React.FC = () => {
             console.log('[AILF] 工作流返回新界面，更新 schema');
             // 延迟更新，让当前表单提交完成
             setTimeout(() => {
+              if (!canApply()) return;
               setAmisKey(prev => prev + 1);
               setAmisSchema(newSchema);
-              speak('已进入下一步');
+              speak(response.data.msg === '工作流已完成' ? '工作流已完成！' : '已进入下一步');
             }, 300);
             
             // 🔥 返回特殊响应，告诉 AMIS 不要显示成功提示（我们自己处理）
@@ -217,6 +224,7 @@ const MainPage: React.FC = () => {
           } else if (response.data.msg === '工作流已完成') {
             console.log('[AILF] 工作流已完成');
             setTimeout(() => {
+              if (!canApply()) return;
               setAmisSchema(null);
               speak('工作流已完成！');
             }, 500);
@@ -229,79 +237,13 @@ const MainPage: React.FC = () => {
           }
         }
 
-        // 检查是否是工作流步骤完成的API响应（排除登录/注册/认证/命令/workflow相关API）
-        const isExcludedApi = api.url?.includes('/login') || 
-                              api.url?.includes('/register') || 
-                              api.url?.includes('/auth') ||
-                              api.url?.includes('/refresh-token') ||
-                              api.url?.includes('/command') ||
-                              api.url?.includes('/workflow/state');  // 排除 workflow/state，已单独处理
-        if (response.data && response.data.code === 200 &&
-            (api.url?.includes('/api/') && api.method?.toLowerCase() === 'post') &&
-            !isExcludedApi) {
-          console.log('[AILF] 检测到API操作成功，检查是否需要自动推进工作流');
-
-          // 延迟一下让当前操作完成，然后检查是否需要自动推进
-          setTimeout(async () => {
-            try {
-              // 调用后端检查是否有活跃的工作流会话需要推进
-              const progressHeaders: Record<string, string> = {
-                'Content-Type': 'application/json'
-              };
-              const token = userTokenManager.getToken();
-              if (token) {
-                progressHeaders['Authorization'] = `Bearer ${token}`;
-              }
-
-              const progressResult = await submitAsyncCommand('继续下一步', {
-                auto_progress: true,
-                step_completed: true,
-                user_id: userTokenManager.getUserInfo()?.id || 'anonymous'
-              }, progressHeaders);
-
-              if (progressResult?.schema) {
-                console.log('[AILF] 工作流自动推进成功，更新界面');
-                setAmisKey(prev => prev + 1);
-                setAmisSchema(progressResult.schema);
-
-                // 语音反馈
-                if (progressResult.responseText) {
-                  speak(progressResult.responseText);
-                }
-              }
-            } catch (error) {
-              console.log('[AILF] 工作流自动推进检查失败或无需推进:', error);
-              // 这是正常情况，不是所有API调用都需要推进工作流
-            }
-          }, 1000);
-        }
+        // 工作流表单由 /workflow/state 校验实例并推进；独立 API 成功只反馈本次操作。
 
         // AMIS expects `status: 0` for success. Our backend often returns `{code: 200, ...}`,
         // so normalize here to avoid "success but UI doesn't update" issues.
-        const payload = response.data;
-        let status = 0;
-        let msg = response.statusText;
-        if (payload && typeof payload === 'object') {
-          const payloadStatus =
-            payload.status != null && !Number.isNaN(Number(payload.status))
-              ? Number(payload.status)
-              : null;
-          const payloadCode =
-            payload.code != null && !Number.isNaN(Number(payload.code))
-              ? Number(payload.code)
-              : null;
-
-          if (payloadStatus != null) {
-            // 兼容 AMIS(status=0 成功) 与后端 code 风格(2xx 成功)
-            status = payloadStatus === 0 || (payloadStatus >= 200 && payloadStatus < 300) ? 0 : payloadStatus;
-          } else if (payloadCode != null) {
-            status = payloadCode >= 200 && payloadCode < 300 ? 0 : payloadCode;
-          }
-          msg = payload.msg || payload.message || msg;
-        }
-        return { status, msg, data: payload };
+        return normalized;
       } catch (error: any) {
-        console.error('[AILF] Amis fetcher error:', error);
+        console.error('[AILF] Amis 请求失败，HTTP 状态:', error.response?.status);
         // 返回错误响应，包含错误信息供 AMIS 显示
         const errorData = error.response?.data || {
           code: error.response?.status || 500,
@@ -365,10 +307,13 @@ const MainPage: React.FC = () => {
         animation: slideIn 0.3s ease-out;
       `;
       
-      notification.innerHTML = `
-        <span style="font-size: 18px; font-weight: bold;">${icon}</span>
-        <span>${msg}</span>
-      `;
+      // 接口消息可能带有用户输入，用文本节点显示，不能把消息当 HTML 执行。
+      const iconElement = document.createElement('span');
+      iconElement.style.cssText = 'font-size: 18px; font-weight: bold;';
+      iconElement.textContent = icon;
+      const messageElement = document.createElement('span');
+      messageElement.textContent = String(msg || '');
+      notification.append(iconElement, messageElement);
       
       // 添加动画样式
       const style = document.createElement('style');

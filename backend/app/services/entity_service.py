@@ -662,7 +662,8 @@ class EntityService:
 
     def get_entity_records(self, entity_id: str, page: int = 1, limit: int = 20,
                           filters: Optional[Dict[str, Any]] = None,
-                          sort_by: Optional[str] = None, sort_order: str = "desc") -> Dict[str, Any]:
+                          sort_by: Optional[str] = None, sort_order: str = "desc",
+                          lock_for_update: bool = False) -> Dict[str, Any]:
         """获取实体数据记录列表 - 从实体独立表读取"""
         try:
             from sqlalchemy import text
@@ -727,8 +728,8 @@ class EntityService:
                         if value is not None:
                             resolved_field = field_alias_map.get(field_name, field_name)
                             if resolved_field not in field_names and resolved_field not in base_columns:
-                                logger.warning(f"忽略未知过滤字段: {field_name} -> {resolved_field}")
-                                continue
+                                # 忽略条件会把“查询指定记录”变成“取第一条”，支付和通知会误操作他人记录。
+                                return {"success": False, "error": "invalid_filter", "details": f"未知过滤字段: {field_name}"}
                             param_name = f"filter_{i}"
                             where_clauses.append(f"`{resolved_field}` = :{param_name}")
                             params[param_name] = value
@@ -751,7 +752,9 @@ class EntityService:
 
                 # 分页查询
                 offset = (page - 1) * limit
-                query_sql = text(f"SELECT * FROM `{table_name}` {where_sql} {order_sql} LIMIT :limit OFFSET :offset")
+                # MySQL 在事务中锁定业务记录，重复支付请求会在锁后重新读取最新状态。
+                lock_sql = " FOR UPDATE" if lock_for_update and db.bind.dialect.name == "mysql" else ""
+                query_sql = text(f"SELECT * FROM `{table_name}` {where_sql} {order_sql} LIMIT :limit OFFSET :offset{lock_sql}")
                 params["limit"] = limit
                 params["offset"] = offset
                 

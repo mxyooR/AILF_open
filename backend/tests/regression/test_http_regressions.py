@@ -176,6 +176,100 @@ class HTTPWorkflowTests(DatabaseTestCase, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 400, response.text)
         self.assertEqual(self.workflows.sessions.get_active_session("developer").id, second.id)
 
+    async def test_async_command_to_authenticated_api_form_branch_notification_and_database(self):
+        """贯通真实路由、规则模板、事务和通知，只有模型推理及令牌校验使用替身。"""
+        import inspect
+        import json
+        from app.api.v1 import ai as ai_api
+        from app.services import async_command_service as command_module
+        from app.services.ai_amis_service import ai_amis_service
+        from app.schemas.entity import EntityCreateRequest
+        from app.models.api_route import APIRouteDBModel, RouteStatus
+
+        for name, fields in (
+            ("command_record", [("name", "text")]),
+            ("notification", [("notification_type", "text"), ("title", "text"), ("message", "text"),
+                              ("status", "text"), ("user_id", "text"), ("idempotency_key", "text")]),
+        ):
+            created = await self.entities.create_entity(EntityCreateRequest(name=name, displayName=name,
+                fields=[{"name": key, "displayName": key, "type": kind} for key, kind in fields]))
+            self.assertTrue(created["success"], created)
+        with database.get_db_session() as db:
+            for method, api_id, operation in (("GET", "read_fixture", "list"), ("POST", "regression_api", "create")):
+                db.add(APIRouteDBModel(id=api_id, api_id=api_id, name=api_id, endpoint="/command-records",
+                    method=method, auth_required=True, status=RouteStatus.ACTIVE, handler_type="entity_crud",
+                    handler_config={"entity": "command_record", "operation": operation},
+                    parameters_config=[] if method == "GET" else [{"name": "name", "location": "body", "type": "string", "required": True}]))
+        self.dynamic._load_active_routes_from_database()
+        flow = workflow()
+        flow["nodes"][0]["child_nodes"][0]["node_id"] = "lookup_1"
+        flow["nodes"][1]["config"]["api_endpoint"] = "/command-records"
+        flow["nodes"][1]["child_nodes"][0]["node_id"] = "decision"
+        flow["nodes"].extend([
+            node("lookup_1", "api_call", ["edit_1"], config={"api_id": "read_fixture", "api_endpoint": "/command-records", "method": "GET", "ui_mode": "auto"}),
+            node("decision", "condition", ["notice", "rejected"], config={"evaluation_expression": "edit_1_result.name == 'demo'"}),
+            node("notice", "notification", ["finish_1"], config={"notification_type": "success", "message": "Saved ${edit_1_result.name}"}),
+            node("rejected", "end"),
+        ])
+        flow.pop("id")
+        flow.pop("status")
+        created = self.workflows.create_workflow(WorkflowCreateRequest(**flow))
+        self.assertTrue(created["success"], created)
+        flow_id = created["data"]["workflow"]["id"]
+        from app.schemas.workflow import WorkflowUpdateRequest
+        self.assertTrue(self.workflows.update_workflow(flow_id, WorkflowUpdateRequest(status="active"))["success"])
+        service = AIServiceSimple()
+        service.workflow_executor = self.executor
+        service._identify_intent_async = AsyncMock(return_value={"type": "WORKFLOW", "id": flow_id})
+        # 使用真实的规则模板生成中间表单，避免模型或 Celery 服务参与测试。
+        self.executor._generate_step_schema = WorkflowExecutionService._generate_step_schema.__get__(self.executor)
+        if inspect.iscoroutinefunction(ai_api.async_command_service.submit):
+            from app.core.command_runtime import CommandRuntime, TaskStateStore
+            commands = CommandRuntime(service.process_command, TaskStateStore(None, ttl=30), timeout=10)
+            self.addAsyncCleanup(commands.shutdown)
+        else:
+            with patch.object(type(ai_api.async_command_service), "_init_redis"):
+                commands = type(ai_api.async_command_service)()
+        with self.token(), patch.object(ai_api, "async_command_service", commands), \
+             patch.object(command_module, "ai_service_simple", service), \
+             patch.object(ai_module, "workflow_service", self.workflows), \
+             patch.object(ai_module, "workflow_session_service", self.workflows.sessions), \
+             patch.object(ai_amis_service, "generate_schema", AsyncMock(return_value={"success": False})):
+            headers = {"Authorization": "Bearer fixture-token"}
+            submitted = await self.client.post("/api/v1/command/async", json={"command": "create a fixture record", "context": {"user_token": "forged-token"}}, headers=headers)
+            self.assertEqual(submitted.status_code, 202, submitted.text)
+            task = submitted.json()["data"]
+            poll_headers = {**headers, "X-Task-Token": task.get("poll_token", "")}
+            for _ in range(100):
+                polled = await self.client.get("/api/v1/command/async/" + task["task_id"], headers=poll_headers)
+                self.assertEqual(polled.status_code, 200, polled.text)
+                result = polled.json()["data"]
+                if result["status"] in {"SUCCESS", "FAILURE"}:
+                    break
+                await asyncio.sleep(0)
+            self.assertEqual(result["status"], "SUCCESS", result)
+            self.assertTrue(result["result"]["success"], result)
+            session = self.workflows.sessions.get_active_session("developer")
+            self.assertIn("lookup_1", session.completed_steps)
+            schema = result["result"]["amis_schema"]
+            self.assertEqual(schema["instance_id"], session.id)
+            self.assertEqual(schema["current_node_id"], "edit_1")
+            body = {"workflow_id": flow_id, "instance_id": session.id, "node_id": "edit_1", "action": "submit", "name": "demo"}
+            completed = await self.client.post("/api/v1/workflow/state", json=body, headers=headers)
+            self.assertEqual(completed.json()["status"], 0, completed.text)
+            self.assertEqual(completed.json()["msg"], "工作流已完成")
+            duplicate = await self.client.post("/api/v1/workflow/state", json=body, headers=headers)
+            self.assertEqual(duplicate.json()["status"], 1, duplicate.text)
+        from sqlalchemy import text
+        with database.get_db_session() as db:
+            self.assertEqual(db.execute(text("SELECT COUNT(*) FROM entity_command_record")).scalar(), 1)
+            self.assertEqual(db.execute(text("SELECT COUNT(*) FROM entity_notification")).scalar(), 1)
+        snapshot = self.workflows.sessions.get_instance(session.id)
+        self.assertEqual(snapshot.current_step, "finish_1")
+        self.assertEqual(snapshot.status, "completed")
+        self.assertNotIn("fixture-token", json.dumps(snapshot.to_dict()))
+        self.assertNotIn("forged-token", json.dumps(snapshot.to_dict()))
+
     def test_required_database_initialization_failures_stop_startup(self):
         with patch.object(self.main, "init_logging"), patch.object(self.main, "init_database", return_value=True), \
              patch.object(self.main, "init_role_database", return_value=False):

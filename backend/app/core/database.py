@@ -7,6 +7,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Generator
 import logging
 
@@ -42,6 +43,9 @@ engine = create_database_engine(settings.DATABASE_URL)
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 仅显式业务事务复用会话。ContextVar 将并发请求隔离，普通服务仍使用独立会话。
+_business_session = ContextVar("ailf_business_session", default=None)
 
 # 创建基础模型类
 Base = declarative_base()
@@ -79,6 +83,15 @@ def get_db_session() -> Generator[Session, None, None]:
     获取数据库会话的上下文管理器
     用于服务层直接使用
     """
+    shared = _business_session.get()
+    if shared is not None:
+        try:
+            yield shared
+        except Exception:
+            # 即使下层把异常转成响应，上层也不能提交已经失败的事务。
+            shared.info["business_rollback_only"] = True
+            raise
+        return
     db = SessionLocal()
     try:
         yield db
@@ -88,6 +101,19 @@ def get_db_session() -> Generator[Session, None, None]:
         raise
     finally:
         db.close()
+
+
+@contextmanager
+def business_transaction() -> Generator[Session, None, None]:
+    """支付、订单及后置动作共用一次提交；任何一步失败都回滚整笔业务。"""
+    with get_db_session() as db:
+        marker = _business_session.set(db)
+        try:
+            yield db
+            if db.info.get("business_rollback_only"):
+                raise RuntimeError("业务事务中存在失败操作")
+        finally:
+            _business_session.reset(marker)
 
 
 def create_tables():

@@ -52,12 +52,15 @@ async def get_current_user_optional(
         # 步骤1: 尝试开发者token验证
         developer_user = await _verify_developer_token(credentials)
         if developer_user:
+            # 令牌只在本次编排中向内部 API 转发，不进入模型输入或工作流持久化数据。
+            developer_user["_verified_token"] = token
             logger.debug("开发者token验证成功")
             return developer_user
 
         # 步骤2: 尝试用户token验证
         user_info = await _verify_user_token(token, db)
         if user_info:
+            user_info["_verified_token"] = token
             logger.debug(f"用户token验证成功: {user_info.get('username')}")
             return user_info
 
@@ -133,7 +136,7 @@ async def _verify_user_token(token: str, db: Session) -> Optional[Dict[str, Any]
             return None
 
         # 获取用户ID
-        user_id = payload.get("user_id")
+        user_id = payload.get("user_id") or payload.get("sub")
         if not user_id:
             logger.warning("Token中没有user_id")
             return None
@@ -144,12 +147,18 @@ async def _verify_user_token(token: str, db: Session) -> Optional[Dict[str, Any]
             logger.warning(f"用户不存在: {user_id}")
             return None
 
+        # 停用账号不能借尚未到期的令牌继续触发业务流程。
+        if not user.is_active:
+            return None
+
         # 获取用户角色
         user_role = None
         if user.role_id:
             user_role = db.query(RoleDBModel).filter(RoleDBModel.id == user.role_id).first()
             if not user_role:
                 logger.warning(f"用户角色不存在: {user.role_id}")
+            elif user_role.status != "active":
+                return None
 
         return await _build_user_info(user, user_role, db)
 
@@ -315,8 +324,10 @@ async def _build_enhanced_context(request: CommandRequest, current_user: Optiona
                                 db: Session) -> Dict[str, Any]:
     """构建增强的上下文信息 - 简化版，直接使用 current_user 中已有的信息"""
     try:
-        # 基础上下文
-        enhanced_context = request.context or {}
+        # 复制业务上下文；身份和权限必须覆盖客户端值，尤其不能接受伪造的 user_token。
+        enhanced_context = dict(request.context or {})
+        enhanced_context.pop("_verified_token", None)
+        enhanced_context["user_token"] = current_user.get("_verified_token") if current_user else None
 
         if not current_user:
             # 未登录用户

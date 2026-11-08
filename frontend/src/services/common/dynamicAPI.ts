@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../common/apiClient';
+import { normalizeAmisResponse } from './amisTransport';
 import type { APIResponse } from '../../types/developer/route';
 
 export interface DynamicAPIOptions {
@@ -44,33 +45,14 @@ export class DynamicAPIService {
       // 确保endpoint格式正确
       const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
       
-      let response: APIResponse;
-
-      switch (method) {
-        case 'GET':
-          response = await apiClient.get(normalizedEndpoint, { params });
-          break;
-        case 'POST':
-          response = await apiClient.post(normalizedEndpoint, data);
-          break;
-        case 'PUT':
-          response = await apiClient.put(normalizedEndpoint, data);
-          break;
-        case 'DELETE':
-          response = await apiClient.delete(normalizedEndpoint, { params });
-          break;
-        case 'PATCH':
-          // PATCH使用POST模拟，添加方法覆盖头
-          response = await apiClient.post(normalizedEndpoint, { ...data, _method: 'PATCH' });
-          break;
-        default:
-          throw new Error(`不支持的HTTP方法: ${method}`);
-      }
+      const response: APIResponse = await apiClient.execute(normalizedEndpoint, { method, params, data, headers, timeout });
+      const normalized = normalizeAmisResponse(response);
 
       const executionTime = Date.now() - startTime;
 
       return {
-        success: true,
+        success: normalized.status === 0,
+        error: normalized.status === 0 ? undefined : normalized.msg || '业务操作失败',
         data: response.data,
         statusCode: response.code || 200,
         headers: {}, // APIResponse没有headers字段
@@ -84,7 +66,7 @@ export class DynamicAPIService {
       return {
         success: false,
         error: error.message || '未知错误',
-        statusCode: error.response?.status || 500,
+        statusCode: error.status ?? error.response?.status ?? 500,
         headers: error.response?.headers || {},
         executionTime
       };

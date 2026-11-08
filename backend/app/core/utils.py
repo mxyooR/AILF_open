@@ -6,6 +6,7 @@ import time
 import random
 import re
 import hashlib
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -83,17 +84,12 @@ def format_datetime(dt: Optional[datetime]) -> str:
 
 def generate_id(prefix: str) -> str:
     """
-    生成唯一ID（时间戳格式，用于需要唯一性的场景）
-    
-    Args:
-        prefix: ID前缀，如 "role", "entity", "workflow" 等
-        
-    Returns:
-        格式为 "{prefix}_{timestamp}_{random}" 的唯一ID
+    为实体、字段、角色、权限和调用日志生成带前缀的 UUID。
+
+    同一毫秒可能批量创建很多字段；四位随机数会碰撞，跨进程也不能靠计数器去重。
+    完整 UUID 保持 ID 不依赖时钟精度，常用前缀下也能放入现有 50 字符主键列。
     """
-    timestamp = int(time.time() * 1000)
-    random_suffix = random.randint(1000, 9999)
-    return f"{prefix}_{timestamp}_{random_suffix}"
+    return f"{prefix}_{uuid.uuid4().hex}"
 
 
 def generate_semantic_id(prefix: str, name: str, ensure_unique: bool = True) -> str:

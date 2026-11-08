@@ -87,6 +87,29 @@ class AIServiceSimple:
         
         return False
 
+    @staticmethod
+    def _accessible_workflows(workflows, accessible_apis, permissions):
+        """只向模型提供用户可以执行的工作流，避免跨角色推荐后台业务。"""
+        if "*:*" in permissions:
+            return workflows
+
+        def allowed(workflow):
+            for node in workflow.get("nodes") or []:
+                if node.get("type") != "api_call":
+                    continue
+                config = node.get("config") or {}
+                api_id = config.get("api_id")
+                endpoint = config.get("api_endpoint")
+                if not any(
+                    (api_id and api_id in (api.get("api_id"), api.get("id")))
+                    or (endpoint and endpoint == api.get("endpoint") and str(config.get("method", "GET")).upper() == str(api.get("method", "GET")).upper())
+                    for api in accessible_apis
+                ):
+                    return False
+            return True
+
+        return [workflow for workflow in workflows if allowed(workflow)]
+
     async def process_command(
         self,
         command: str,
@@ -125,7 +148,9 @@ class AIServiceSimple:
 
             # 3. 获取候选资源
             accessible_apis = context.get("accessible_apis", [])
-            workflows = workflow_service.get_active_workflows_for_ai()
+            workflows = self._accessible_workflows(
+                workflow_service.get_active_workflows_for_ai(), accessible_apis, context.get("user_permissions", [])
+            )
             domain = self._detect_domain(accessible_apis, workflows)
             logger.info(f"获取到 {len(accessible_apis)} 个可访问 API，{len(workflows)} 个活跃工作流")
             
@@ -145,6 +170,8 @@ class AIServiceSimple:
             if intent_result["type"] == "HELP":
                 return await self._handle_help_intent(command, context, intent_result)
             if intent_result["type"] == "WORKFLOW":
+                if not any(intent_result.get("id") in (item.get("id"), item.get("workflow_id")) for item in workflows):
+                    return self._create_error_response("当前用户无权访问模型选择的工作流")
                 return await self._handle_workflow_intent_two_round(
                     user_id,
                     intent_result,
@@ -153,6 +180,18 @@ class AIServiceSimple:
                     inference_trace_id=inference_trace_id
                 )
             elif intent_result["type"] == "API":
+                # 模型只能选择当前用户的候选 API；使用服务端配置，不能执行模型拼出的路径。
+                matched = intent_result.get("matched_resource") or {}
+                selected_id = intent_result.get("id") or matched.get("api_id") or matched.get("id")
+                trusted = next((api for api in accessible_apis if (
+                    selected_id and selected_id in {api.get("api_id"), api.get("id")}
+                ) or (
+                    matched.get("endpoint") and matched.get("endpoint") == api.get("endpoint")
+                    and str(matched.get("method", "GET")).upper() == str(api.get("method", "GET")).upper()
+                )), None)
+                if trusted is None:
+                    return self._create_error_response("当前用户无权访问模型选择的 API")
+                intent_result = {**intent_result, "matched_resource": trusted}
                 return await self._handle_api_intent_two_round(
                     intent_result,
                     command,

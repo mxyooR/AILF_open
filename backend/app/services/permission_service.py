@@ -36,13 +36,13 @@ class PermissionService:
             from app.models.user import User
             user = db.query(User).filter(User.id == user_id).first()
 
-            if not user or not user.role_id:
+            if not user or not user.is_active or not user.role_id:
                 return []
 
             # 获取用户角色
             role = db.query(RoleDBModel).filter(RoleDBModel.id == user.role_id).first()
 
-            if not role:
+            if not role or role.status != "active":
                 return []
 
             return [
@@ -656,11 +656,15 @@ class PermissionService:
     def get_user_permissions(self, user, db: Session) -> List[str]:
         """获取用户权限列表"""
         try:
+            if user is not None and not user.is_active:
+                return []
             if not user or not user.role_id:
                 return ["user:read"]  # 默认最小权限
 
             # 获取用户角色
             user_role = db.query(RoleDBModel).filter(RoleDBModel.id == user.role_id).first()
+            if user_role is not None and user_role.status != "active":
+                return []
             if not user_role:
                 return ["user:read"]
 
@@ -682,11 +686,15 @@ class PermissionService:
     def get_user_accessible_apis(self, user, db: Session) -> List[Dict[str, Any]]:
         """获取用户可访问的API列表"""
         try:
+            if user is not None and not user.is_active:
+                return []
             if not user or not user.role_id:
                 return self._get_guest_apis()
 
             # 获取用户角色
             user_role = db.query(RoleDBModel).filter(RoleDBModel.id == user.role_id).first()
+            if user_role is not None and user_role.status != "active":
+                return []
             if not user_role:
                 return self._get_guest_apis()
 

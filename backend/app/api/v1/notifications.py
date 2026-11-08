@@ -122,13 +122,18 @@ async def get_notification_actor(
             details={"user_type": user_type},
         )
 
-    user_id = payload.get("user_id")
+    user_id = payload.get("user_id") or payload.get("sub")
     if not user_id:
         raise UnifiedResponse.unauthorized(message="令牌缺少 user_id", error_type="invalid_token_payload")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise UnifiedResponse.unauthorized(message="用户不存在或已禁用", error_type="user_not_available")
+    if user.role_id:
+        from app.models.role import RoleDBModel
+        role = db.get(RoleDBModel, user.role_id)
+        if role is not None and role.status != "active":
+            raise UnifiedResponse.forbidden(message="用户角色已停用", error_type="role_inactive")
 
     return {
         "user_type": "user",

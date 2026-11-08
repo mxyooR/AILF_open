@@ -6,14 +6,21 @@
 from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 import time
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
 from app.services.service_registry import get_service_registry
 from app.services.entity_service import entity_service
+from app.core.database import business_transaction, get_db_session
+from app.services.business_rules import (
+    BusinessOperationError, parse_amount, parse_confirmation, require_write, requester_id, business_code,
+)
+from app.services.workflow_context import response_error
 
 
 def _first_value(request_data: Dict[str, Any], key: str) -> Optional[Any]:
@@ -59,11 +66,11 @@ def _get_entity_id(entity_name: str) -> Optional[str]:
     return getattr(entity, "id", None) if entity else None
 
 
-def _find_entity_record(entity_name: str, filters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _find_entity_record(entity_name: str, filters: Dict[str, Any], *, lock_for_update=True) -> Optional[Dict[str, Any]]:
     entity_id = _get_entity_id(entity_name)
     if not entity_id:
         return None
-    result = entity_service.get_entity_records(entity_id, page=1, limit=1, filters=filters)
+    result = entity_service.get_entity_records(entity_id, page=1, limit=1, filters=filters, lock_for_update=lock_for_update)
     if not result.get("success"):
         return None
     records = result.get("data", {}).get("records") or []
@@ -305,6 +312,8 @@ def _execute_post_actions(post_actions: list[Dict[str, Any]], request_data: Dict
             continue
 
         results.append({"entity": entity, "success": False, "error": "unknown_operation"})
+    if any(not result.get("success") for result in results):
+        raise BusinessOperationError("后置业务操作失败，已撤销本次操作")
     return results
 
 
@@ -312,12 +321,8 @@ class PaymentService:
     """示例支付服务（模拟实现）"""
 
     def _build_payment_id(self, base_dt: datetime) -> Optional[str]:
-        for offset in range(10):
-            candidate_dt = base_dt + timedelta(seconds=offset)
-            payment_id = f"P{candidate_dt.strftime('%Y%m%d%H%M%S')}"
-            if not _find_entity_record("payment", {"payment_id": payment_id}):
-                return payment_id
-        return None
+        # 兼容模板中的 ^P\d{14}$，多个进程也不会挤占同一秒的十个时间槽。
+        return business_code("P", 14)
 
     def refund_payment(self, *, request_data: Dict[str, Any], **_: Any) -> Dict[str, Any]:
         payment_id = _first_value(request_data, "payment_id")
@@ -328,16 +333,48 @@ class PaymentService:
             return {"code": 400, "message": "缺少 payment_id", "data": None}
         if refund_amount is None:
             return {"code": 400, "message": "缺少 refund_amount", "data": None}
-
+        payment = _find_entity_record("payment", {"payment_id": payment_id}, lock_for_update=False) or _find_entity_record("payment", {"id": payment_id}, lock_for_update=False)
+        if not payment:
+            return {"code": 404, "message": "支付记录不存在", "data": None}
+        # 所有支付操作统一先锁订单、再锁支付记录，避免与支付创建交叉加锁。
+        order = _find_entity_record("order", {"id": payment["order_id"]}) if payment.get("order_id") else None
+        if payment.get("order_id") and not order:
+            return {"code": 404, "message": "支付关联订单不存在", "data": None}
+        payment = _find_entity_record("payment", {"id": payment["id"]})
+        if not payment:
+            return {"code": 404, "message": "支付记录不存在", "data": None}
+        try:
+            amount = parse_amount(refund_amount)
+            if amount > parse_amount(payment.get("amount")):
+                return {"code": 400, "message": "退款金额不能超过支付金额", "data": None}
+            if amount != parse_amount(payment.get("amount")):
+                return {"code": 400, "message": "示例支付服务仅支持整笔退款，票务手续费退款请使用退票服务", "data": None}
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+        previous = str(payment.get("status") or "").lower()
+        if previous in {"已退款", "refunded"}:
+            # 有退款金额字段时可核对重试；旧配置无退款账本时拒绝再次退款。
+            if payment.get("refund_amount") is not None and parse_amount(payment["refund_amount"]) == amount:
+                return {"code": 200, "message": "退款已处理", "data": {"payment_id": payment_id, "refund_status": "completed", "deduplicated": True}}
+            return {"code": 409, "message": "该支付已退款", "data": None}
+        if previous not in {"已支付", "paid", "success"}:
+            return {"code": 409, "message": "只有已支付记录可以退款", "data": None}
+        fields = _get_entity_field_names("payment")
+        updates = {"status": "已退款"}
+        if "refund_amount" in fields:
+            updates["refund_amount"] = amount
+        require_write(entity_service.update_entity_record(_get_entity_id("payment"), payment["id"], updates), "退款状态保存失败")
+        if amount == parse_amount(payment.get("amount")) and payment.get("order_id"):
+            require_write(entity_service.update_entity_record(_get_entity_id("order"), order["id"], {"order_status": "已退票"}), "订单退款状态保存失败")
         return {
             "code": 200,
-            "message": "退款请求已受理",
+            "message": "模拟退款处理完成",
             "data": {
-                "refund_id": f"refund_{uuid.uuid4().hex[:12]}",
+                "refund_id": f"refund_{payment.get('payment_id') or payment['id']}",
                 "payment_id": payment_id,
                 "refund_amount": refund_amount,
                 "refund_reason": refund_reason,
-                "refund_status": "processing",
+                "refund_status": "completed",
                 "refund_time": _now_iso(),
             },
         }
@@ -355,12 +392,24 @@ class PaymentService:
             return {"code": 404, "message": "订单不存在", "data": None}
 
         amount = _first_value(request_data, "amount")
-        if amount is None:
-            amount = order.get("total_amount") or 0
         try:
-            amount_value = float(amount)
-        except Exception:
-            amount_value = 0.0
+            # 订单金额是唯一计价依据，客户端传入金额只用于核对，不能覆盖订单价格。
+            amount_value = parse_amount(order.get("total_amount"))
+            if amount is not None and parse_amount(amount) != amount_value:
+                return {"code": 400, "message": "支付金额与订单金额不一致", "data": None}
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+
+        order_status = str(order.get("order_status") or "").lower()
+        if order_status in {"已取消", "已退票", "已退款", "已关闭", "cancelled", "canceled", "refunded", "closed"}:
+            return {"code": 409, "message": "订单当前状态不可支付", "data": None}
+        existing = _find_entity_record("payment", {"order_id": order.get("id")})
+        if existing and str(existing.get("status") or "").lower() in {"已支付", "paid", "success"}:
+            if parse_amount(existing.get("amount")) != amount_value:
+                return {"code": 409, "message": "历史支付金额与订单不一致", "data": None}
+            return {"code": 200, "message": "订单已支付", "data": {**existing, "payment_success": True, "deduplicated": True}}
+        if order_status not in {"", "待支付", "未支付", "支付失败", "pending", "unpaid", "failed"}:
+            return {"code": 409, "message": "订单当前状态不可重复支付", "data": None}
 
         payment_method = _first_value(request_data, "payment_method") or order.get("payment_method") or "支付宝"
         payment_method = _normalize_option_value("payment", "payment_method", payment_method)
@@ -403,11 +452,11 @@ class PaymentService:
 
         order_entity_id = _get_entity_id("order")
         if order_entity_id and order.get("id"):
-            entity_service.update_entity_record(
+            require_write(entity_service.update_entity_record(
                 order_entity_id,
                 order["id"],
                 {"order_status": "已支付", "payment_time": create_time, "payment_method": payment_method},
-            )
+            ), "订单支付状态更新失败")
 
         handler_config = _normalize_handler_config(route_config)
         post_actions = handler_config.get("post_actions") or []
@@ -455,62 +504,62 @@ class PaymentService:
         payment_id = _first_value(request_data, "payment_id")
         order_id = _first_value(request_data, "order_id") or _first_value(request_data, "order_number")
         transaction_id = _first_value(request_data, "transaction_id")
-        status = _first_value(request_data, "status") or _first_value(request_data, "trade_status") or "paid"
+        status = _first_value(request_data, "status") or _first_value(request_data, "trade_status")
 
         normalized = str(status).lower()
         paid_statuses = {"success", "paid", "trade_success", "支付成功", "已支付"}
+        failed_statuses = {"failed", "failure", "trade_closed", "支付失败"}
+        if normalized not in paid_statuses | failed_statuses:
+            return {"code": 400, "message": "缺少或不支持的支付状态", "data": None}
         new_status = "已支付" if normalized in paid_statuses else "支付失败"
 
         payment = None
         if payment_id:
-            payment = _find_entity_record("payment", {"payment_id": payment_id}) or _find_entity_record(
-                "payment", {"id": payment_id}
+            payment = _find_entity_record("payment", {"payment_id": payment_id}, lock_for_update=False) or _find_entity_record(
+                "payment", {"id": payment_id}, lock_for_update=False
             )
         if not payment and transaction_id:
-            payment = _find_entity_record("payment", {"transaction_id": transaction_id})
+            payment = _find_entity_record("payment", {"transaction_id": transaction_id}, lock_for_update=False)
         if not payment and order_id:
-            payment = _find_entity_record("payment", {"order_id": order_id}) or _find_entity_record(
-                "payment", {"order_number": order_id}
+            payment = _find_entity_record("payment", {"order_id": order_id}, lock_for_update=False) or _find_entity_record(
+                "payment", {"order_number": order_id}, lock_for_update=False
             )
 
+        # 回调只能更新已有支付，且订单归属以支付记录为准，不能按外部传入订单另造记录。
+        if not payment:
+            return {"code": 404, "message": "支付记录不存在", "data": None}
+        order = _find_entity_record("order", {"id": payment["order_id"]}) if payment.get("order_id") else None
+        if not order:
+            return {"code": 404, "message": "支付关联订单不存在", "data": None}
+        payment = _find_entity_record("payment", {"id": payment["id"]})
+        if not payment:
+            return {"code": 404, "message": "支付记录不存在", "data": None}
+        if order_id and str(order_id) not in {str(payment.get("order_id")), str(payment.get("order_number"))}:
+            return {"code": 409, "message": "回调订单与支付记录不一致", "data": None}
+        try:
+            if payload.get("amount") is not None and parse_amount(payload["amount"]) != parse_amount(payment.get("amount")):
+                return {"code": 400, "message": "回调金额与支付记录不一致", "data": None}
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+        previous = str(payment.get("status") or "").lower()
+        if previous in {"已退款", "refunded", "已取消", "cancelled", "canceled"}:
+            return {"code": 409, "message": "支付已关闭，不能处理回调", "data": None}
+        if previous in paid_statuses:
+            # 迟到的失败通知不能把已支付状态倒退，也不能清空原交易号。
+            return {"code": 200, "message": "支付回调已处理", "data": {"status": "已支付", "payment_success": True, "deduplicated": True}}
+        if str(order.get("order_status") or "").lower() not in {"待支付", "未支付", "支付失败", "pending", "unpaid", "failed"}:
+            return {"code": 409, "message": "订单当前状态不能接收支付回调", "data": None}
         now_time = _db_time(datetime.utcnow())
-        payment_entity_id = _get_entity_id("payment")
-        if payment:
-            record_id = payment.get("id") or payment.get("payment_id")
-            updates = {"status": new_status, "transaction_id": transaction_id}
-            if new_status == "已支付":
-                updates["payment_time"] = now_time
-            if payment_entity_id and record_id:
-                entity_service.update_entity_record(payment_entity_id, record_id, updates)
-        else:
-            if not payment_id:
-                payment_id = self._build_payment_id(datetime.utcnow()) or f"P{_digits_from_datetime(datetime.utcnow())[:14]}"
-            record = {
-                "payment_id": payment_id,
-                "order_id": order_id,
-                "order_number": payload.get("order_number") or order_id,
-                "amount": payload.get("amount") or 0,
-                "payment_method": payload.get("payment_method") or "支付宝",
-                "transaction_id": transaction_id,
-                "status": new_status,
-                "payment_time": now_time if new_status == "已支付" else None,
-                "expire_time": None,
-                "create_time": now_time,
-            }
-            if payment_entity_id:
-                entity_service.create_entity_record(payment_entity_id, record)
-
-        order_entity_id = _get_entity_id("order")
-        if order_entity_id and order_id:
-            order = _find_entity_record("order", {"id": order_id}) or _find_entity_record(
-                "order", {"order_number": order_id}
-            )
-            if order and order.get("id"):
-                order_status = "已支付" if new_status == "已支付" else "支付失败"
-                updates = {"order_status": order_status}
-                if new_status == "已支付":
-                    updates["payment_time"] = now_time
-                entity_service.update_entity_record(order_entity_id, order["id"], updates)
+        updates = {"status": new_status}
+        if transaction_id:
+            updates["transaction_id"] = transaction_id
+        if new_status == "已支付":
+            updates["payment_time"] = now_time
+        require_write(entity_service.update_entity_record(_get_entity_id("payment"), payment["id"], updates), "支付状态更新失败")
+        order_updates = {"order_status": new_status}
+        if new_status == "已支付":
+            order_updates["payment_time"] = now_time
+        require_write(entity_service.update_entity_record(_get_entity_id("order"), order["id"], order_updates), "订单状态更新失败")
 
         return {
             "code": 200,
@@ -541,10 +590,28 @@ class NotificationService:
             if value is not None and value != "":
                 owner_values.append(str(value))
         if not owner_values:
-            return True
+            return False
         return uid in owner_values
 
-    def send_notification(self, *, request_data: Dict[str, Any], route_config: Any = None, **_: Any) -> Dict[str, Any]:
+    @staticmethod
+    def _count_unread(entity_name, filters, field_names):
+        """未读总数按接收者统计全部记录，翻页不会使通知角标跟着当前页变化。"""
+        from sqlalchemy import text
+        table = "entity_" + entity_service._safe_table_name(entity_name)
+        clauses, parameters = [], {}
+        for index, (field, value) in enumerate(filters.items()):
+            clauses.append(f"`{entity_service._safe_column_name(field)}` = :owner_{index}")
+            parameters[f"owner_{index}"] = value
+        if "status" in field_names:
+            clauses.append("COALESCE(`status`, '') NOT IN ('read', '已读')")
+        for field in ("is_read", "read", "是否已读"):
+            if field in field_names:
+                clauses.append(f"COALESCE(`{field}`, 0) = 0")
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with get_db_session() as db:
+            return db.execute(text(f"SELECT COUNT(*) FROM `{table}`{where}"), parameters).scalar() or 0
+
+    def send_notification(self, *, request_data: Dict[str, Any], route_config: Any = None, request=None, **_: Any) -> Dict[str, Any]:
         handler_config = _normalize_handler_config(route_config)
         notification_type = _first_value(request_data, "notification_type") or _first_value(request_data, "type")
         template_code = _first_value(request_data, "template_code")
@@ -557,6 +624,13 @@ class NotificationService:
             or _first_value(request_data, "receiver_id")
             or _first_value(request_data, "target_user_id")
         )
+        if request is not None:
+            authenticated_id = requester_id(request, user_id)
+            state = getattr(request, "state", None)
+            if (getattr(state, "user_info", None) or {}).get("user_type") != "developer":
+                if user_id is not None and str(user_id) != str(authenticated_id):
+                    return {"code": 403, "message": "普通用户不能给其他用户发送通知", "data": None}
+                user_id = authenticated_id
         idempotency_key = (
             _first_value(request_data, "idempotency_key")
             or _first_value(request_data, "biz_key")
@@ -570,7 +644,7 @@ class NotificationService:
         if not message:
             message = template_code or title or "系统通知"
 
-        notification_id = f"notify_{uuid.uuid4().hex[:12]}"
+        notification_id = business_code("N", 14)
         sent_at = _now_iso()
         status = "sent"
         title = title or template_code or "系统通知"
@@ -590,7 +664,7 @@ class NotificationService:
 
         entity_name = handler_config.get("entity") or "notification"
         persist_enabled = bool(handler_config.get("persist", True))
-        strict_persist = bool(handler_config.get("strict_persist", False))
+        strict_persist = bool(handler_config.get("strict_persist", persist_enabled))
 
         if persist_enabled:
             entity_id = _get_entity_id(entity_name)
@@ -601,9 +675,15 @@ class NotificationService:
                     None
                 )
 
+                # 旧模板没有单独幂等列，使用稳定通知号复用已有唯一约束，无需修改真实配置。
+                if idempotency_key and not idempotency_field and "notification_id" in field_names:
+                    digest = hashlib.sha256(f"{user_id}:{idempotency_key}".encode()).hexdigest()
+                    notification_id = "N" + str(int(digest, 16) % (10 ** 14)).zfill(14)
+                    data["notification_id"] = notification_id
+                    idempotency_field = "notification_id"
                 if idempotency_key and idempotency_field:
-                    dedupe_filters: Dict[str, Any] = {idempotency_field: idempotency_key}
-                    user_field = next((f for f in ("user_id", "receiver_id", "target_user_id") if f in field_names), None)
+                    dedupe_filters: Dict[str, Any] = {idempotency_field: notification_id if idempotency_field == "notification_id" else idempotency_key}
+                    user_field = next((f for f in ("user_id", "recipient_id", "receiver_id", "target_user_id") if f in field_names), None)
                     if user_id is not None and user_field:
                         dedupe_filters[user_field] = user_id
                     existing = _find_entity_record(entity_name, dedupe_filters)
@@ -645,6 +725,7 @@ class NotificationService:
                     "status": status,
                     "状态": status,
                     "sent_at": sent_at,
+                    "send_time": _db_time(datetime.utcnow()),
                     "发送时间": sent_at,
                     "created_at": _db_time(datetime.utcnow()),
                     "create_time": _db_time(datetime.utcnow()),
@@ -653,8 +734,16 @@ class NotificationService:
                     "是否已读": False,
                     "读取时间": None,
                 }
+                type_options = _get_field_options(entity_name, "notification_type")
+                if type_options and notification_type not in type_options:
+                    # 工作流传入 success/info 是消息级别，铁路模板的类型字段保存发送渠道。
+                    stored_type = {"in_app": "站内信", "email": "邮件", "sms": "短信"}.get(channel, notification_type)
+                    candidate_fields["notification_type"] = _normalize_option_value(entity_name, "notification_type", stored_type)
+                if "status" in field_names:
+                    candidate_fields["status"] = _normalize_option_value(entity_name, "status", "未读" if channel == "in_app" else "已发送")
+                    data["status"] = candidate_fields["status"]
                 if idempotency_key and idempotency_field:
-                    candidate_fields[idempotency_field] = idempotency_key
+                    candidate_fields[idempotency_field] = notification_id if idempotency_field == "notification_id" else idempotency_key
 
                 defaults = handler_config.get("defaults") if isinstance(handler_config.get("defaults"), dict) else {}
                 for key, value in defaults.items():
@@ -698,7 +787,7 @@ class NotificationService:
             "data": data,
         }
 
-    def list_notifications(self, *, request_data: Dict[str, Any], route_config: Any = None, **_: Any) -> Dict[str, Any]:
+    def list_notifications(self, *, request_data: Dict[str, Any], route_config: Any = None, request=None, **_: Any) -> Dict[str, Any]:
         handler_config = _normalize_handler_config(route_config)
         entity_name = handler_config.get("entity") or "notification"
         entity_id = _get_entity_id(entity_name)
@@ -707,9 +796,11 @@ class NotificationService:
 
         user_id = (
             _first_value(request_data, "user_id")
+            or _first_value(request_data, "recipient_id")
             or _first_value(request_data, "receiver_id")
             or _first_value(request_data, "target_user_id")
         )
+        user_id = requester_id(request, user_id)
         page_raw = _first_value(request_data, "page") or 1
         limit_raw = _first_value(request_data, "limit") or 20
         try:
@@ -725,9 +816,11 @@ class NotificationService:
         field_names = _get_entity_field_names(entity_name)
         filters: Dict[str, Any] = {}
         if user_id is not None:
-            user_field = next((f for f in ("user_id", "receiver_id", "target_user_id") if f in field_names), None)
+            user_field = next((f for f in ("user_id", "recipient_id", "receiver_id", "target_user_id", "接收者ID") if f in field_names), None)
             if user_field:
                 filters[user_field] = user_id
+            else:
+                return {"code": 403, "message": "通知实体未配置接收者字段", "data": None}
 
         records_result = entity_service.get_entity_records(entity_id, page=page, limit=limit, filters=filters or None)
         if not records_result.get("success"):
@@ -738,33 +831,27 @@ class NotificationService:
             }
 
         data = records_result.get("data", {})
+        pagination = data.get("pagination") or {}
+        if hasattr(pagination, "model_dump"):
+            pagination = pagination.model_dump()
         records = data.get("records") or []
-        unread_count = 0
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            status = str(record.get("status") or "").lower()
-            is_read = record.get("is_read")
-            read_flag = record.get("read")
-            if status in {"read", "已读"} or is_read is True or read_flag is True:
-                continue
-            unread_count += 1
+        unread_count = self._count_unread(entity_name, filters, field_names)
 
         return {
             "code": 200,
             "message": "通知列表查询成功",
             "data": {
                 "items": records,
-                "total": data.get("total", len(records)),
-                "page": data.get("page", page),
-                "limit": data.get("limit", limit),
-                "has_next": data.get("has_next", False),
-                "has_prev": data.get("has_prev", False),
+                "total": pagination.get("total", len(records)),
+                "page": pagination.get("page", page),
+                "limit": pagination.get("limit", limit),
+                "has_next": pagination.get("has_next", False),
+                "has_prev": pagination.get("has_prev", False),
                 "unread_count": unread_count,
             },
         }
 
-    def mark_as_read(self, *, request_data: Dict[str, Any], route_config: Any = None, **_: Any) -> Dict[str, Any]:
+    def mark_as_read(self, *, request_data: Dict[str, Any], route_config: Any = None, request=None, **_: Any) -> Dict[str, Any]:
         handler_config = _normalize_handler_config(route_config)
         entity_name = handler_config.get("entity") or "notification"
         entity_id = _get_entity_id(entity_name)
@@ -779,6 +866,7 @@ class NotificationService:
             _first_value(request_data, "requester_user_id")
             or _first_value(request_data, "user_id")
         )
+        requester_user_id = requester_id(request, requester_user_id)
 
         field_names = _get_entity_field_names(entity_name)
         record = self._find_notification_record(entity_name, notification_id)
@@ -819,7 +907,7 @@ class NotificationService:
             "data": updated,
         }
 
-    def delete_notification(self, *, request_data: Dict[str, Any], route_config: Any = None, **_: Any) -> Dict[str, Any]:
+    def delete_notification(self, *, request_data: Dict[str, Any], route_config: Any = None, request=None, **_: Any) -> Dict[str, Any]:
         handler_config = _normalize_handler_config(route_config)
         entity_name = handler_config.get("entity") or "notification"
         entity_id = _get_entity_id(entity_name)
@@ -834,6 +922,7 @@ class NotificationService:
             _first_value(request_data, "requester_user_id")
             or _first_value(request_data, "user_id")
         )
+        requester_user_id = requester_id(request, requester_user_id)
 
         record = self._find_notification_record(entity_name, notification_id)
         if not record:
@@ -871,12 +960,25 @@ class RefundService:
         ticket_id = _first_value(request_data, "ticket_id")
         if not ticket_id:
             return {"code": 400, "message": "缺少 ticket_id", "data": None}
-
+        ticket = _find_entity_record("ticket", {"id": ticket_id}) or _find_entity_record("ticket", {"ticket_number": ticket_id})
+        if not ticket:
+            return {"code": 404, "message": "车票不存在", "data": None}
+        can_refund = str(ticket.get("status") or "").lower() in {"已售", "已出票", "sold", "issued"}
+        departure = ticket.get("departure_date")
+        if not departure:
+            can_refund = False
+        if departure:
+            try:
+                # 票面时间按本地业务时间解释，不把无时区的发车时间与 UTC 当前时间混用。
+                departure_dt = datetime.fromisoformat(f"{str(departure)[:10]}T{ticket.get('departure_time') or '00:00:00'}")
+                can_refund = can_refund and departure_dt - datetime.now() >= timedelta(hours=2)
+            except (TypeError, ValueError):
+                return {"code": 400, "message": "车票发车时间无效", "data": None}
         return {
             "code": 200,
             "message": "退票政策查询成功",
             "data": {
-                "can_refund": True,
+                "can_refund": can_refund,
                 "refund_rate": 0.1,
                 "refund_deadline": "开车前2小时",
                 "policy_description": "开车前2小时可退，收取10%手续费",
@@ -889,17 +991,25 @@ class RefundService:
         if price is None:
             return {"code": 400, "message": "缺少 price", "data": None}
         try:
-            price_value = float(price)
-        except Exception:
-            return {"code": 400, "message": "price 格式错误", "data": None}
-
-        try:
-            rate_value = float(refund_rate) if refund_rate is not None else 0.0
-        except Exception:
-            rate_value = 0.0
-
-        refund_fee = round(price_value * rate_value, 2)
-        refund_amount = round(price_value - refund_fee, 2)
+            price_value = parse_amount(price)
+            rate_value = parse_amount(refund_rate if refund_rate is not None else "0.1", allow_zero=True)
+            if rate_value > 1:
+                raise ValueError("退款手续费率必须介于 0 和 1")
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+        # 十进制计算避免 float 舍入使手续费和退款之和偏离原价。
+        quantum = Decimal("0.01")
+        entity_result = entity_service.get_entity_by_name("ticket")
+        if entity_result.get("success"):
+            price_field = next((field for field in entity_result["data"]["entity"].fields if field.name == "price"), None)
+            kind = getattr(getattr(price_field, "type", None), "value", getattr(price_field, "type", None))
+            if kind in {"number", "integer"}:
+                # 模板中的整数票价以最小货币单位保存，手续费也必须取整。
+                quantum = Decimal("1")
+        if price_value != price_value.quantize(quantum):
+            return {"code": 400, "message": "票价精度与实体金额字段不一致", "data": None}
+        refund_fee = (price_value * rate_value).quantize(quantum, rounding=ROUND_HALF_UP)
+        refund_amount = price_value - refund_fee
         return {
             "code": 200,
             "message": "退款金额计算成功",
@@ -916,7 +1026,10 @@ class RefundService:
         refund_reason = _first_value(request_data, "refund_reason")
         if confirm is None:
             return {"code": 400, "message": "缺少 confirm_refund", "data": None}
-
+        try:
+            confirm = parse_confirmation(confirm)
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
         return {
             "code": 200,
             "message": "退票确认成功" if bool(confirm) else "退票已取消",
@@ -929,10 +1042,51 @@ class RefundService:
     def process_refund(self, *, request_data: Dict[str, Any], **_: Any) -> Dict[str, Any]:
         ticket_id = _first_value(request_data, "ticket_id")
         refund_amount = _first_value(request_data, "refund_amount")
+        if not ticket_id or refund_amount is None:
+            return {"code": 400, "message": "缺少 ticket_id 或 refund_amount", "data": None}
+        confirm = _first_value(request_data, "confirm_refund")
+        try:
+            amount = parse_amount(refund_amount)
+            if confirm is not None and not parse_confirmation(confirm):
+                return {"code": 409, "message": "退票已取消", "data": None}
+        except ValueError as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+        ticket = _find_entity_record("ticket", {"id": ticket_id}) or _find_entity_record("ticket", {"ticket_number": ticket_id})
+        if not ticket:
+            return {"code": 404, "message": "车票不存在", "data": None}
+        existing = _find_entity_record("refund", {"ticket_id": ticket["id"]})
+        if existing:
+            if str(existing.get("status") or "").lower() in {"已完成", "completed"} and parse_amount(existing.get("refund_amount")) == amount:
+                return {"code": 200, "message": "退票已处理", "data": {**existing, "refund_status": "completed", "deduplicated": True}}
+            return {"code": 409, "message": "该车票已有退款记录", "data": None}
+        policy = self.get_refund_policy(request_data=request_data)
+        if policy["code"] != 200:
+            return policy
+        if not policy["data"]["can_refund"]:
+            return {"code": 409, "message": "车票当前状态或发车时间不满足退票条件", "data": None}
+        calculation = self.calculate_refund(request_data={"body": {"price": ticket.get("price"), "refund_rate": policy["data"]["refund_rate"]}})
+        if calculation["code"] != 200:
+            return calculation
+        values = calculation["data"]
+        if amount != values["refund_amount"]:
+            return {"code": 400, "message": "退款金额与退票政策不一致", "data": None}
+        record = {
+            "refund_id": business_code("R", 14), "ticket_id": ticket["id"],
+            "ticket_number": ticket.get("ticket_number"), "passenger_name": ticket.get("passenger_name"),
+            "passenger_id_card": ticket.get("passenger_id_card"), "original_amount": values["price"],
+            "refund_fee": values["refund_fee"], "refund_amount": amount,
+            "refund_reason": _first_value(request_data, "refund_reason"),
+            "status": "已完成", "refund_time": _db_time(datetime.utcnow()), "create_time": _db_time(datetime.utcnow()),
+        }
+        # 未指定的可选值让实体默认值生效，不用显式 None 覆盖配置中的退款原因。
+        record = {key: value for key, value in record.items() if value is not None}
+        saved = require_write(entity_service.create_entity_record(_get_entity_id("refund"), record), "退款记录保存失败")
+        require_write(entity_service.update_entity_record(_get_entity_id("ticket"), ticket["id"], {"status": "已退票"}), "车票退款状态保存失败")
         return {
             "code": 200,
             "message": "退款处理完成",
             "data": {
+                **saved,
                 "ticket_id": ticket_id,
                 "refund_amount": refund_amount,
                 "refund_status": "completed",
@@ -945,12 +1099,7 @@ class TicketService:
     """模拟出票服务"""
 
     def _build_ticket_number(self, base_dt: datetime) -> Optional[str]:
-        for offset in range(10):
-            candidate_dt = base_dt + timedelta(seconds=offset)
-            ticket_number = f"T{candidate_dt.strftime('%y%m%d%H%M%S')}"
-            if not _find_entity_record("ticket", {"ticket_number": ticket_number}):
-                return ticket_number
-        return None
+        return business_code("T", 12)
 
     def purchase_ticket(self, *, request_data: Dict[str, Any], route_config: Any = None, **_: Any) -> Dict[str, Any]:
         handler_config = _normalize_handler_config(route_config)
@@ -990,7 +1139,7 @@ class TicketService:
                     record[key] = resolved
 
         for field_name in required_fields:
-            if field_name not in record:
+            if field_name not in record or record[field_name] is None or record[field_name] == "":
                 return {"code": 400, "message": f"缺少字段: {field_name}", "data": None}
 
         if "ticket_number" in fields and not record.get("ticket_number"):
@@ -1058,7 +1207,7 @@ async def dispatch_service_call(
     if not service:
         return {"code": 501, "message": f"未注册的服务: {service_name}", "data": None}
 
-    method = getattr(service, method_name, None)
+    method = getattr(service, method_name, None) if not method_name.startswith("_") else None
     if not method or not callable(method):
         return {
             "code": 501,
@@ -1066,7 +1215,20 @@ async def dispatch_service_call(
             "data": None,
         }
 
-    result = method(request_data=request_data, route_config=route_config, request=request)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
+    async def invoke():
+        result = method(request_data=request_data, route_config=route_config, request=request)
+        return await result if inspect.isawaitable(result) else result
+
+    # 内置业务的主记录、订单更新及后置动作必须同时成功，不能分散成多次提交。
+    if isinstance(service, (PaymentService, RefundService, TicketService, NotificationService)):
+        try:
+            with business_transaction():
+                result = await invoke()
+                if response_error(result):
+                    raise BusinessOperationError(result.get("message") or "业务操作失败", code=result.get("code", 500), data=result.get("data"))
+                return result
+        except BusinessOperationError as exc:
+            return exc.response
+        except Exception:
+            return {"code": 500, "message": "业务提交失败，已撤销本次操作", "data": None}
+    return await invoke()

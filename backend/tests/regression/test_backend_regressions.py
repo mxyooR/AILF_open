@@ -186,6 +186,16 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class EntityPersistenceTests(DatabaseTestCase):
+    def test_fast_field_creation_cannot_collide_with_timestamp_random_ids(self):
+        import asyncio
+        # CI 曾在同一毫秒内生成两个相同的四位随机后缀；固定旧随机源可稳定重现。
+        with patch("app.core.utils.time.time", return_value=1_800_000_000), \
+             patch("app.core.utils.random.randint", return_value=1234):
+            result = asyncio.run(self.entities.create_entity(self.request()))
+        self.assertTrue(result["success"], result)
+        field_ids = [field.id for field in result["data"]["entity"].fields]
+        self.assertEqual(len(field_ids), len(set(field_ids)))
+
     def request(self):
         return EntityCreateRequest(
             name="regression_entity", displayName="Regression entity", fields=[
