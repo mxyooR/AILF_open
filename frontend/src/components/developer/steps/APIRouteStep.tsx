@@ -447,8 +447,8 @@ const APIRouteStep: React.FC<APIRouteStepProps> = ({ onNext, onPrev }) => {
         // 为不同类型的参数设置默认值
         else if (param.type === 'string') {
           if (param.name === 'name') formData[param.name] = '测试用户';
-          else if (param.name === 'id_card') formData[param.name] = '110101199001011234';
-          else if (param.name === 'phone') formData[param.name] = '13800138000';
+          else if (param.name === 'id_card') formData[param.name] = 'DEMO-4373882745395';
+          else if (param.name === 'phone') formData[param.name] = '00044219836';
           else if (param.name === 'email') formData[param.name] = 'test@example.com';
           else if (param.name === 'gender') formData[param.name] = '男';
           else if (param.name === 'passenger_type') formData[param.name] = '成人';
@@ -743,8 +743,8 @@ const APIRouteStep: React.FC<APIRouteStepProps> = ({ onNext, onPrev }) => {
     if (type === 'integer') return 1;
     if (type === 'number') return 1;
 
-    if (name.includes('id_card')) return '110101199001011234';
-    if (name.includes('phone')) return '13800138000';
+    if (name.includes('id_card')) return 'DEMO-4373882745395';
+    if (name.includes('phone')) return '00044219836';
     if (name.includes('email')) return 'test@example.com';
     if (name.includes('ticket_number') || name.includes('ticket_no') || name === 'ticket_id') return 'T260211035136';
     if (name.includes('train_number')) return 'G1001';

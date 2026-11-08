@@ -1,311 +1,141 @@
-# AILF (AI Language Frontend)
+<div align="center">
 
-**An LLM-powered platform that generates business UIs from natural language.**
+![AILF — Language in. Interface out.](docs/assets/cover.svg)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
-[![Qwen3](https://img.shields.io/badge/Model-Qwen3-ff6b6b.svg)](https://github.com/QwenLM/Qwen3)
+# AILF · AI Language Frontend
 
-[English](README.md) · [中文](README_zh.md)
+**Turn a spoken or typed request into an interactive business interface.**
 
----
+[![CI](https://github.com/mxyooR/AILF_open/actions/workflows/ci.yml/badge.svg)](https://github.com/mxyooR/AILF_open/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-173c35)](LICENSE)
+![React + TypeScript](https://img.shields.io/badge/React-TypeScript-3178c6)
+![FastAPI + Celery](https://img.shields.io/badge/FastAPI-Celery-27796b)
+![Qwen3 + LoRA](https://img.shields.io/badge/Qwen3-LoRA-6e68a3)
 
-## What is AILF?
+[中文](README_zh.md) · **English** · [Live demo](https://mxyooR.github.io/AILF_open/) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md)
 
-AILF is an intelligent dynamic UI generation platform powered by large language models. Users express their needs through natural language (voice or text), and the system automatically understands intent, fills slots, and generates the corresponding business interface in real time.
+</div>
 
-**Core philosophy**: Transform the traditional software paradigm from *"find a feature, then operate"* to *"describe your needs, then execute"*.
+AILF connects natural language, configured business APIs and workflows, and [AMIS](https://github.com/baidu/amis) interfaces. A developer defines the business model; a user describes a task; the system selects an API or workflow, extracts fields, and assembles the interface for the next action.
 
-**Train ticket is just one example.** AILF is a **general-purpose platform** that works across any business domain. It comes with built-in scenarios like e-commerce, healthcare, hospitality, banking, logistics, education and more — and you can define your own custom scenarios without writing code.
+> “Find a high-speed train from Beijing to Shanghai, with a second-class seat.”
+>
+> Request → candidate retrieval → intent selection → slot extraction → interactive form → workflow execution.
 
-For example, say:
-> *"I want to buy a high-speed train ticket from Beijing to Shanghai tomorrow morning"*
+This repository is the public edition: application code, three business templates, training examples and scripts, and adapter configuration. **Model weights, local credentials, databases and uploaded files are excluded.** It is an engineering prototype; measured accuracy, latency and production-scale reliability are not claimed.
 
-The system automatically does: intent recognition → slot filling → form generation → available trains display → user confirmation → ticket purchase submission.
+## See it before setting up a model
 
-```
-+--------------------------------------------------------------------------------+
-|  Traditional Flow:  Find Menu -> Click -> Click -> Click -> Submit             |
-|                      (5-8 steps, 45-120 seconds)                              |
-|                                                                                |
-|  AILF Flow:       "I want to..." -> AI generates UI -> Done                   |
-|                      (1 step, 2-5 seconds)                                    |
-+--------------------------------------------------------------------------------+
-```
+The `/demo` playground runs entirely in the browser. Explore railway search, product search and appointments; change form conditions; select a result; inspect the generated AMIS Schema.
 
----
-
-## Architecture
-
-![AILF System Architecture Overview](screenshots/screenshot-architecture.png)
-
-| Diagram | Description |
-|---------|-------------|
-| **Dataset Flow** | Training data pipeline - scenario definition, data generation, annotation, validation |
-| **UI Generation** | Frontend architecture - AMIS Schema generation, dynamic form rendering, voice integration |
-| **Server Deployment** | Backend infrastructure - FastAPI + Celery + Redis + MySQL service orchestration |
-| **Workflow Execution** | State machine design - workflow persistence, node progression, checkpoint and recovery |
-
-![Dataset Flow](screenshots/arch-dataset-flow.png)
-![UI Generation](screenshots/arch-ui-generation.png)
-![Server Deployment](screenshots/arch-server-deployment.png)
-![Workflow Execution](screenshots/arch-workflow-execution.png)
-
----
-
-## Screenshots
-
-| Login | Workflow Chat |
-|:------:|:------:|
-| ![Login](screenshots/screenshot-login.png) | ![Workflow](screenshots/screenshot-workflow.png) |
-
-| Workflow Form | Voice Interaction |
-|:------:|:------:|
-| ![Form](screenshots/screenshot-workflow-form.png) | ![Voice](screenshots/screenshot-voice-flow.png) |
-
-| Main Interface | Developer Panel |
-|:------:|:------:|
-| ![Main](screenshots/screenshot-main.png) | ![Developer](screenshots/screenshot-developer-panel.png) |
-
-![Workflow Execution Flow](screenshots/mermaid-workflow-diagram.png)
-
----
-
-## Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Multilingual** | Supports voice and text input in multiple languages |
-| **Security-First** | Multi-layer defense: RBAC + JWT + dynamic route validation + audit logging |
-| **Real-Time Generation** | LLM inference + schema assembly + UI rendering in seconds |
-| **Zero-Code Configuration** | Configure entities, workflows, and permissions via visual panel |
-| **Voice Interaction** | Built-in Web Speech API for hands-free operation |
-| **Multi-Scenario** | Built-in: train ticket, e-commerce, healthcare, hotel, banking, logistics, education, and more. Define your own scenarios with zero code. |
-
----
-
-## Quick Start
-
-### Docker (Recommended)
+**[Open the hosted playground →](https://mxyooR.github.io/AILF_open/)** · [Demo walkthrough](docs/DEMO.md)
 
 ```bash
-git clone https://github.com/mxyooR/AILF.git
-cd AILF
-docker-compose up -d
+git clone https://github.com/mxyooR/AILF_open.git
+cd AILF_open
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-After startup:
-- **User UI**: http://localhost:3000
-- **Developer Panel**: http://localhost:3000/config
-- **API Docs**: http://localhost:5000/docs
+Open **http://localhost:3000/demo**. Requires Node.js 20+ and pnpm 10.13.1. If dependencies are already available locally, reuse that environment instead of installing another copy.
 
-### Manual Installation
+The demo uses **preset intents and synthetic data**. It demonstrates Schema rendering and interaction; the full application uses the inference Worker described below. No account, model download, API key or database is needed for the playground.
 
-Prerequisites: Python 3.10+, Node.js 18+, pnpm 8+, Redis 6+, MySQL 8.0+
+![AILF interactive playground](screenshots/demo-desktop.png)
+
+## What is implemented
+
+| Capability | Implementation |
+| --- | --- |
+| Language-driven interfaces | Text input, browser speech recognition and optional local Whisper fallback; AMIS forms and result views |
+| Business configuration | Scenario templates, entity modeling, dynamic routes, roles and a Butterfly workflow canvas |
+| Context retrieval | BGE retrieval over business API/workflow candidates, followed by two-round Qwen3 + LoRA inference |
+| Workflow execution | Persisted workflow sessions, node execution and Schema strategies for the current step |
+| Server authorization | Role permissions, developer/user JWT sessions, refresh rotation and runtime route checks |
+| Separate inference service | Celery + Redis queue, independent model Worker and a runtime monitoring page |
+| Bounded command orchestration | Per-process concurrency and admission limits, task deadlines, expiring state and per-task polling credentials |
+| Public demo | Three local scenarios, editable form conditions and an inspectable Schema |
+
+The built-in templates are **railway ticketing, basic ecommerce and hospital management**. Other domains require configuration and validation. Payments, ticket issuance and appointments in the sample flows are business examples rather than integrations with real providers.
+
+<details>
+<summary>Developer workflow canvas</summary>
+
+![Visual workflow editor](screenshots/screenshot-workflow-form.png)
+
+</details>
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[Text / voice] --> A[FastAPI orchestration]
+    C[Entities · APIs · workflows · roles] --> A
+    A --> R[Redis / Celery]
+    R --> W[BGE + Qwen3 / LoRA Worker]
+    W --> A
+    A --> S[Workflow state + Schema strategies]
+    S --> F[React / AMIS interface]
+    F --> D[Authorized dynamic routes]
+    D --> M[(MySQL)]
+```
+
+The command runtime bounds active orchestration and queued requests, returns HTTP 429 when full, and keeps expiring task state in Redis with a bounded local fallback. Polling requires a separate per-task credential whose digest is stored server-side. Model calls are delegated to Celery; the backend assembles schemas and advances workflow state. See [architecture and limits](docs/ARCHITECTURE.md) and the [async API contract](docs/ASYNC_COMMANDS.md).
+
+## Run the full application
+
+The full stack requires MySQL 8, Redis 7 and a separately configured inference Worker with compatible model weights. The frontend demo can be run independently.
 
 ```bash
-# 1. Create Python environment
-conda create -n ailf_env python=3.11
-conda activate ailf_env
+# Generate unique local credentials; this creates an ignored .env.
+python scripts/setup_env.py
 
-# 2. Install backend dependencies
-cd backend
-cp .env.example .env
-pip install -r requirements.txt
+# Start the application and data services.
+docker compose up --build -d
 
-# 3. Initialize database
-python scripts/init_db.py
-
-# 4. Install frontend dependencies
-cd ../frontend
-pnpm install
-
-# 5. Start services (3 terminals needed)
-# Terminal 1 - Backend: cd backend && python main.py
-# Terminal 2 - Frontend: cd frontend && pnpm dev
-# Terminal 3 - Worker: cd celery_worker && celery -A celery_app worker --loglevel=info
+# After placing model weights in the documented directories:
+docker compose --profile inference up --build -d worker
 ```
 
-See [docs/](docs/) for complete documentation.
+| Entry | URL |
+| --- | --- |
+| Browser playground | http://localhost:3000/demo |
+| Full application | http://localhost:3000 |
+| Developer configuration | http://localhost:3000/config |
+| Interactive API docs | http://localhost:5000/docs |
 
----
+Read [deployment](docs/DEPLOYMENT.md) for manual setup, model files, GPU requirements and verification limits. Docker configuration is validated separately from running a full GPU-backed deployment.
 
-## Two-Round LLM Architecture
+## Project map
 
-AILF uses an "intent recognition + slot filling" two-round LLM architecture with LoRA fine-tuning for domain adaptation.
-
+```text
+frontend/src/demo/       Local public fixtures and demo transport
+frontend/src/pages/      Application, demo and monitoring pages
+frontend/src/components/developer/  Configuration UI and workflow canvas
+backend/app/api/v1/      HTTP API
+backend/app/services/    Orchestration, workflow execution and Schema strategies
+backend/app/core/       Database, authorization, dynamic routes and model proxies
+backend/app/templates/  Three business templates
+celery_worker/          Independent model inference service
+Model/                  Training scripts, datasets and adapter configuration
+scripts/                Local setup and public-repository checks
+docs/                   Architecture, deployment and validation notes
 ```
-Round 1: Intent Recognition
-+----------------------------------------------------+
-|  User: "Buy a high-speed train ticket from Beijing |
-|         to Shanghai tomorrow morning"              |
-|                                                    |
-|  System:                                           |
-|    intent: WORKFLOW                                |
-|    candidate_workflows: [train_ticket]            |
-|    confidence: 0.95                                |
-+----------------------------------------------------+
 
-Round 2: Slot Filling
-+----------------------------------------------------+
-|  Scene: train_ticket                              |
-|                                                    |
-|  Slots:                                            |
-|    date: 2024-XX-XX                               |
-|    departure: Beijing                               |
-|    destination: Shanghai                            |
-|    time_range: morning (06:00-12:00)              |
-|    seat_type: second_class                         |
-+----------------------------------------------------+
-```
+## Checks and contribution
 
 ```bash
-# LoRA Fine-tuning
-cd Model
-python train_pure_llm_v11.py
+pnpm typecheck
+pnpm test
+pnpm build
+python -m unittest discover -s backend/tests/unit -v
+python -m unittest discover -s scripts/tests -v
+python scripts/check_public_repo.py
+python scripts/check_public_repo.py --staged
 ```
 
----
+The offline backend checks need `python-dotenv`. Legacy scripts under `backend/tests/` include service-dependent and mutating integration cases; they are not the offline test suite. See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the [documentation index](docs/README.md).
 
-## Security Architecture
+## License and acknowledgments
 
-| Layer | Mechanism | Description |
-|-------|-----------|-------------|
-| **1. Candidate Constraint** | Scope restriction | AI only selects from user authorized APIs/workflows |
-| **2. Dynamic Route** | Runtime validation | Endpoint and parameter validity checked at runtime |
-| **3. Authorization** | RBAC | Role-based access control |
-| **4. Authentication** | JWT Dual Token | Access + Refresh token rotation |
-| **5. Session Governance** | Concurrency limit | Max sessions, revocation list |
-| **6. Audit** | Structured logging | JSON logs, sensitive fields auto-masked |
-
----
-
-## Configuration Guide
-
-### Entity Configuration
-
-```json
-{
-  "name": "train_ticket",
-  "display_name": "Train Ticket",
-  "fields": [
-    {"name": "departure", "type": "string", "label": "Departure", "required": true},
-    {"name": "destination", "type": "string", "label": "Destination", "required": true},
-    {"name": "date", "type": "date", "label": "Travel Date", "required": true},
-    {"name": "seat_type", "type": "enum", "label": "Seat Type", "options": ["Second", "First", "Business"]}
-  ]
-}
-```
-
-### Workflow Configuration
-
-```json
-{
-  "name": "train_ticket_purchase",
-  "display_name": "Ticket Purchase Flow",
-  "steps": [
-    {"step": 1, "name": "query_trains", "action": "Search Trains", "entity": "train_ticket", "api_endpoint": "/api/trains/search"},
-    {"step": 2, "name": "select_train", "action": "Select Train", "display": "table"},
-    {"step": 3, "name": "confirm_order", "action": "Confirm Order", "form": "passenger_info"},
-    {"step": 4, "name": "payment", "action": "Payment", "api_endpoint": "/api/payment/create"}
-  ]
-}
-```
-
-### Permission Configuration
-
-```json
-{
-  "roles": [
-    {"name": "admin", "permissions": ["*"]},
-    {"name": "user", "workflows": ["train_ticket_purchase"], "apis": ["/api/trains/*"]},
-    {"name": "guest", "workflows": ["query_only"], "apis": ["/api/trains/search"]}
-  ]
-}
-```
-
----
-
-## Project Structure
-
-```
-AILF/
-+-- backend/              # FastAPI Backend
-|   +-- app/
-|   |   +-- api/v1/       # API Routes
-|   |   +-- core/         # Core Modules (AI, Auth, Dynamic Router)
-|   |   +-- models/       # SQLAlchemy Models
-|   |   +-- schemas/      # Pydantic Models
-|   |   +-- services/     # Business Logic
-|   +-- scripts/          # Operations Scripts
-|   +-- tests/            # Test Cases
-+-- frontend/             # React + AMIS Frontend
-+-- celery_worker/        # Inference Worker
-+-- Model/                # Training
-+-- docs/                 # Documentation
-+-- screenshots/          # Screenshots
-+-- docker-compose.yml    # Docker Orchestration
-+-- README.md
-```
-
----
-
-## Testing
-
-```bash
-cd backend
-python -m pytest tests/
-python -m pytest tests/ --cov=app --cov-report=html
-```
-
----
-
-## FAQ
-
-**Q: Which LLM models does AILF support?**
-A: Any OpenAI API-compatible model, including Qwen, Llama, GPT-4, etc.
-
-**Q: What is the intent recognition accuracy?**
-A: 95%+ on domain-specific tasks after LoRA fine-tuning.
-
-**Q: Is voice input required?**
-A: No. Both text and voice input are supported.
-
-**Q: How do I add a new business scenario?**
-A: Configure entities, workflows, and permissions in the developer panel - no coding needed.
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
----
-
-## License
-
-Distributed under the [MIT License](LICENSE).
-
-## Acknowledgments
-
-- [Baidu AMIS](https://aisuda.baidu.com/amis/zh/docs/index) — Low-code frontend framework
-- [Qwen3](https://github.com/QwenLM/Qwen3) — LLM
-- [BGE](https://github.com/FlagOpen/FlagEmbedding) — Embedding model
-- [FastAPI](https://fastapi.tiangolo.com/) — High-performance web framework
-- [Celery](https://docs.celeryq.dev/) — Async task queue
-- [React](https://react.dev/) — UI library
-- [Docker](https://www.docker.com/) — Containerization platform
-- [Butterfly](https://github.com/alibaba/butterfly) (MIT) — Node-based visualization framework for workflow designer
-- [LINUX DO](https://linux.do) — Active developer community
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=mxyooR/AILF&type=Timeline)](https://star-history.com/#mxyooR/AILF&Timeline)
+Application code is available under the [MIT License](LICENSE). Third-party assets and models retain their own licenses. Thanks to [AMIS](https://github.com/baidu/amis), [Qwen](https://github.com/QwenLM/Qwen3), [BGE](https://github.com/FlagOpen/FlagEmbedding), [Butterfly](https://github.com/alibaba/butterfly), [FastAPI](https://fastapi.tiangolo.com/), [Celery](https://docs.celeryq.dev/) and [React](https://react.dev/).

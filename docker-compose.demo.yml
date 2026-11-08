@@ -1,0 +1,7 @@
+# Browser-only demo. No credentials, models or data services.
+services:
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports: ["127.0.0.1:3000:3000"]

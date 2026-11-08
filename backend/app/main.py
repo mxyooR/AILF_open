@@ -45,7 +45,11 @@ async def lifespan(app: FastAPI):
     logger = get_logger(__name__)
     logger.info("[Lifespan] 主后端启动完成（不加载模型）")
     
-    yield  # 应用运行中
+    try:
+        yield  # 应用运行中
+    finally:
+        from app.services.async_command_service import async_command_service
+        await async_command_service.shutdown()
     
     # Shutdown: 清理资源
     logger.info("[Lifespan] 应用关闭，清理资源...")

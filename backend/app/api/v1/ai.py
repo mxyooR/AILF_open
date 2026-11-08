@@ -4,7 +4,7 @@ AI交互API路由 - 重构版本
 确保token验证、用户认证、权限检查流程正确
 """
 from app.core.logging_config import get_logger
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from typing import Optional
 
 from app.schemas.ai import (
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.response import UnifiedResponse
 from app.services.async_command_service import async_command_service
+from app.core.command_runtime import CommandCapacityError, CommandRuntimeClosed
 
 logger = get_logger(__name__)
 
@@ -240,32 +241,40 @@ async def process_command_async(
     """
     try:
         enhanced_context = await _build_enhanced_context(request, current_user, db)
-        task_id = async_command_service.submit(request.command, enhanced_context)
+        submission = await async_command_service.submit(request.command, enhanced_context)
+        task_id = submission["task_id"]
         return UnifiedResponse.success(
             status_code=202,
             message="异步任务已提交",
             data={
                 "task_id": task_id,
+                "poll_token": submission["poll_token"],
                 "status": "PENDING",
                 "poll_url": f"/api/v1/command/async/{task_id}"
             }
         )
+    except CommandCapacityError:
+        raise UnifiedResponse.error(status_code=429, message="当前任务较多，请稍后重试", error_type="command_capacity_exceeded")
+    except CommandRuntimeClosed:
+        raise UnifiedResponse.error(status_code=503, message="服务正在关闭，请稍后重试", error_type="command_runtime_closed")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ 提交异步命令失败: {str(e)}")
+        logger.error("提交异步命令失败: %s", type(e).__name__)
         raise UnifiedResponse.internal_error(
             message="提交异步命令失败",
             error_type="command_async_submit_error",
-            details=str(e)
+            details="请检查服务状态"
         )
 
 
 @router.get("/command/async/{task_id}")
-async def get_process_command_async_result(task_id: str):
+async def get_process_command_async_result(task_id: str, task_token: str = Header(default="", alias="X-Task-Token")):
     """
     查询异步命令执行状态/结果
     """
     try:
-        task_result = async_command_service.get(task_id)
+        task_result = await async_command_service.get(task_id, task_token)
         if not task_result:
             raise UnifiedResponse.not_found(
                 message="任务不存在或已过期",
@@ -292,12 +301,14 @@ async def get_process_command_async_result(task_id: str):
             message="任务状态获取成功",
             data=payload
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ 查询异步命令结果失败: {str(e)}")
+        logger.error("查询异步命令结果失败: %s", type(e).__name__)
         raise UnifiedResponse.internal_error(
             message="查询异步命令结果失败",
             error_type="command_async_query_error",
-            details=str(e)
+            details="请检查服务状态"
         )
 
 async def _build_enhanced_context(request: CommandRequest, current_user: Optional[Dict[str, Any]],

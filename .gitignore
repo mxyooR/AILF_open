@@ -53,6 +53,10 @@ yarn.lock
 # Environment variables & secrets
 # ============================================
 .env
+.env.*
+!.env.example
+.venv/
+.pnpm-store/
 .env.local
 .env.development.local
 .env.test.local
@@ -60,6 +64,11 @@ yarn.lock
 *.key
 *.pem
 *.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+service-account*.json
 secrets/
 dev_token.txt
 
@@ -122,6 +131,13 @@ frontend/public/uploads/
 # ============================================
 # All model weight binaries — too large for Git, use Git LFS or manual download
 *.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.bin
+!Model/bge-small-zh-v1.5/pytorch_model.bin.example
 
 # (datasets are tracked in Git)
 
@@ -166,3 +182,19 @@ temp/
 # ============================================
 *.iml
 .idea/
+.cursor/
+.gemini/
+.kilocode/
+.kiro/
+.local/
+artifacts/
+test-results/
+playwright-report/
+.playwright-mcp/
+*.sql
+*.sql.gz
+*.dump
+*.zip
+*.7z
+*.tar
+*.tar.gz

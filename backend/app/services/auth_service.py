@@ -3,6 +3,7 @@
 处理开发者认证和令牌验证的业务逻辑
 """
 from typing import Dict, Any
+import secrets
 from app.config import settings
 from app.core.auth.jwt_handler import jwt_handler
 from app.services.token_session_service import token_session_service
@@ -75,7 +76,7 @@ class AuthService:
             认证结果字典
         """
         # 验证密码
-        if password != settings.DEVELOPER_PASSWORD:
+        if not secrets.compare_digest(password.encode("utf-8"), settings.DEVELOPER_PASSWORD.encode("utf-8")):
             return {
                 "success": False,
                 "error": "invalid_password",

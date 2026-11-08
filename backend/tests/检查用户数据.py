@@ -83,7 +83,7 @@ def check_and_create_user():
                     email="111@test.com",
                     password_hash=hashed_password,
                     real_name="测试管理员",
-                    phone="13800138111",
+                    phone="00053693373",
                     role_id=admin_role.id,
                     is_active=True,
                     created_at=datetime.utcnow()

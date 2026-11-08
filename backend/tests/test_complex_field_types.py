@@ -2,7 +2,8 @@
 测试复杂字段类型的支持
 """
 import sys
-sys.path.insert(0, 'E:/Programming/AILF/backend')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.amis_schema_generator import amis_schema_generator
 

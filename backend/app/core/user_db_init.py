@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import get_db_engine, Base
 from app.models.user import User, UserSession, UserLoginLog
 from app.models.role import RoleDBModel
+from app.config import settings
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,9 @@ def create_user_tables():
 
 def init_default_users():
     """初始化默认用户数据"""
+    if not settings.SEED_DEMO_USERS:
+        logger.info("Demo user seeding is disabled; create users through registration or the developer panel.")
+        return True
     try:
         engine = get_db_engine()
         SessionLocal = sessionmaker(bind=engine)
@@ -89,15 +93,8 @@ def init_default_users():
                 {
                     "username": "testuser",
                     "email": "test@example.com",
-                    "password": "password123",
+                    "password": settings.DEMO_USER_PASSWORD,
                     "real_name": "测试用户",
-                    "role_id": default_role.id
-                },
-                {
-                    "username": "admin",
-                    "email": "admin@example.com", 
-                    "password": "admin123",
-                    "real_name": "管理员",
                     "role_id": default_role.id
                 }
             ]

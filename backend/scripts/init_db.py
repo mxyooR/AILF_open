@@ -6,7 +6,7 @@ import sys
 import os
 
 # 添加app目录到Python路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pymysql
 from app.config import settings

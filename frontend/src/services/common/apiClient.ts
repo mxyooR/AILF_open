@@ -42,7 +42,6 @@ class APIClient {
    */
   setDeveloperToken(token: string | null) {
     this.developerToken = token;
-    console.log('[APIClient] Developer token updated:', token ? token.substring(0, 20) + '...' : 'null');
   }
 
   /**
@@ -50,7 +49,6 @@ class APIClient {
    */
   setUserToken(token: string | null) {
     this.userToken = token;
-    console.log('[APIClient] User token updated:', token ? token.substring(0, 20) + '...' : 'null');
   }
 
   /**

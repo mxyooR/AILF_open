@@ -1,51 +1,42 @@
 {
-    "name":  "ailf-project",
-    "version":  "2.0.0",
-    "description":  "AILF - 智能前端生成框架",
-    "private":  true,
-    "workspaces":  [
-                       "frontend",
-                       "backend"
-                   ],
-    "scripts":  {
-                    "dev":  "pnpm run --parallel dev",
-                    "dev:frontend":  "pnpm --filter frontend dev",
-                    "dev:backend":  "pnpm --filter backend dev",
-                    "build":  "pnpm run --recursive build",
-                    "build:frontend":  "pnpm --filter frontend build",
-                    "test":  "pnpm run --recursive test",
-                    "test:frontend":  "pnpm --filter frontend test",
-                    "install:all":  "pnpm install",
-                    "clean":  "pnpm run --recursive clean",
-                    "lint":  "pnpm run --recursive lint",
-                    "start":  "pnpm run dev"
-                },
-    "keywords":  [
-                     "ai",
-                     "frontend",
-                     "react",
-                     "typescript",
-                     "amis",
-                     "voice-interface",
-                     "natural-language"
-                 ],
-    "author":  "AILF Team",
-    "license":  "Apache-2.0",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "https://github.com/ailf-team/ailf.git"
-                   },
-    "engines":  {
-                    "node":  "\u003e=16.0.0",
-                    "pnpm":  "\u003e=8.0.0"
-                },
-    "packageManager":  "pnpm@10.13.1",
-    "dependencies":  {
-                         "react-router-dom":  "^7.7.0"
-                     },
-    "pnpm": {
-      "overrides": {
-        "react-pdf": "9.0.0"
-      }
+  "name": "ailf",
+  "version": "2.0.0",
+  "description": "AILF — Turn natural language into permission-aware business interfaces",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --dir frontend start",
+    "dev:frontend": "pnpm --dir frontend start",
+    "dev:backend": "python backend/main.py",
+    "build": "pnpm --dir frontend build",
+    "build:frontend": "pnpm --dir frontend build",
+    "test": "pnpm --dir frontend test --watchAll=false --runInBand",
+    "typecheck": "pnpm --dir frontend exec tsc --noEmit",
+    "lint": "pnpm --dir frontend exec eslint src --ext .ts,.tsx,.js",
+    "check:public": "python scripts/check_public_repo.py",
+    "start": "pnpm dev"
+  },
+  "keywords": [
+    "generative-ui",
+    "workflow",
+    "react",
+    "fastapi",
+    "amis",
+    "qwen",
+    "lora"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mxyooR/AILF_open.git"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "pnpm": {
+    "overrides": {
+      "react-pdf": "9.0.0"
     }
+  }
 }

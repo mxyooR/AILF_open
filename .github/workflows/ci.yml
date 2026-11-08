@@ -1,0 +1,70 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  public-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install python-dotenv==1.0.0
+      - run: python scripts/check_public_repo.py
+      - run: python -m unittest discover -s backend/tests/unit -v
+      - run: python -m unittest discover -s scripts/tests -v
+      - name: Validate Compose definitions without starting services
+        env:
+          DB_PASSWORD: test-compose-database-password
+          MYSQL_ROOT_PASSWORD: test-compose-root-password
+          JWT_SECRET_KEY: test-compose-jwt-key-with-at-least-32-characters
+          DEVELOPER_PASSWORD: test-compose-developer-password
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.demo.yml config --quiet
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+        env:
+          GENERATE_SOURCEMAP: 'false'
+          REACT_APP_DEMO_ONLY: 'true'
+          PUBLIC_URL: /${{ github.event.repository.name }}
+          NODE_OPTIONS: --max-old-space-size=4096
+          # Existing lint warnings are documented; type errors and test failures fail earlier steps.
+          CI: 'false'
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        with:
+          path: frontend/build
+  deploy-demo:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: [public-repository, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy browser demo to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

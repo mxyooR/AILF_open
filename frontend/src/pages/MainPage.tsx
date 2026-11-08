@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import '../styles/apple-style.css';
 import axios from 'axios';
+import { runAsyncCommand, AsyncCommandResult } from '../services/common/asyncCommand';
 // 移除amis相关导入，使用原生通知
 import copy from 'copy-to-clipboard';
 import GeneratedInterface from '../components/GeneratedInterface';
@@ -25,19 +26,6 @@ import AppleRibbonBackground from '../components/AppleRibbonBackground';
 const AILF_CONFIG = {
   apiBaseUrl: '',
   amisTheme: 'cxd'
-};
-
-const AI_COMMAND_ASYNC_ENDPOINT = '/api/v1/command/async';
-const AI_COMMAND_POLL_INTERVAL_MS = 1200;
-const AI_COMMAND_MAX_WAIT_MS = 600000;
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-type AsyncCommandResult = {
-  schema: any;
-  responseText: string;
-  message: string;
-  raw: any;
 };
 
 const MainPage: React.FC = () => {
@@ -125,59 +113,18 @@ const MainPage: React.FC = () => {
     }
   }, [voiceError, speak]);
 
-  const submitAsyncCommand = useCallback(async (
+  const submitAsyncCommand = useCallback((
     command: string,
     context: Record<string, any>,
     headers: Record<string, string> = {},
-    timeoutMs: number = AI_COMMAND_MAX_WAIT_MS
-  ): Promise<AsyncCommandResult> => {
-    const submitResponse = await axios.post(
-      `${AILF_CONFIG.apiBaseUrl}${AI_COMMAND_ASYNC_ENDPOINT}`,
-      { command, context },
-      { timeout: 30000, headers }
-    );
-
-    const taskId = submitResponse?.data?.data?.task_id;
-    if (!taskId) {
-      throw new Error('异步任务提交失败：未返回 task_id');
-    }
-
-    const pollUrl = `${AILF_CONFIG.apiBaseUrl}${AI_COMMAND_ASYNC_ENDPOINT}/${taskId}`;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      const statusResponse = await axios.get(pollUrl, {
-        timeout: 30000,
-        headers
-      });
-
-      const taskData = statusResponse?.data?.data || {};
-      const taskStatus = taskData.status;
-
-      if (taskStatus === 'SUCCESS') {
-        const result = taskData.result || {};
-        return {
-          schema: result.amis_schema || result.schema || null,
-          responseText: result.response_text || '',
-          message: statusResponse?.data?.message || '',
-          raw: result
-        };
-      }
-
-      if (taskStatus === 'FAILURE') {
-        throw new Error(taskData.error || '异步任务执行失败');
-      }
-
-      await sleep(AI_COMMAND_POLL_INTERVAL_MS);
-    }
-
-    throw new Error('AI推理超时，请稍后重试');
-  }, []);
+    timeoutMs = 600000
+  ): Promise<AsyncCommandResult> => runAsyncCommand(command, context, headers, {
+    baseURL: AILF_CONFIG.apiBaseUrl, timeoutMs
+  }), []);
 
   // Amis 环境配置
   const amisEnv = {
     fetcher: async (api: any) => {
-      console.log('[AILF] Amis fetcher called:', api);
       try {
         // 处理认证头
         let headers = { ...api.headers };
@@ -187,7 +134,6 @@ const MainPage: React.FC = () => {
           const userToken = userTokenManager.getToken();
           if (userToken) {
             headers.Authorization = `Bearer ${userToken}`;
-            console.log('[AILF] 已添加用户认证头:', headers.Authorization.substring(0, 20) + '...');
           } else {
             console.log('[AILF] 警告：需要认证但用户未登录');
             delete headers.Authorization;
@@ -199,7 +145,6 @@ const MainPage: React.FC = () => {
           const userToken = userTokenManager.getToken();
           if (userToken) {
             headers.Authorization = `Bearer ${userToken}`;
-            console.log('[AILF] 自动添加用户认证头:', headers.Authorization.substring(0, 20) + '...');
           }
         }
 
@@ -213,10 +158,8 @@ const MainPage: React.FC = () => {
         // 检查是否是登录API的响应
         if (api.url && api.url.includes('/login') && response.data && response.data.code === 200) {
           const loginData = response.data.data;
-          console.log('[AILF] 检测到登录成功响应:', loginData);
 
           if (loginData.access_token) {
-            console.log('[AILF] 保存登录token:', loginData.access_token);
 
             // 使用新的用户token管理器
             userTokenManager.setToken({
@@ -253,7 +196,6 @@ const MainPage: React.FC = () => {
 
         // 🔥 检查是否是 workflow/state API 的响应（返回新的 AMIS schema）
         if (api.url?.includes('/workflow/state') && response.data) {
-          console.log('[AILF] 检测到 workflow/state 响应:', response.data);
           
           // workflow/state 返回格式: { status: 0, msg: "success", data: { type: "page", ... } }
           const newSchema = response.data.data;
@@ -861,6 +803,7 @@ const MainPage: React.FC = () => {
                 fontWeight: 400,
                 fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
               }}>后端服务未启动</span>
+              <button type="button" onClick={() => navigate('/demo')} style={{ marginTop: 12, padding: '12px 24px', borderRadius: 8, border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.1)', color: '#fff', cursor: 'pointer' }}>体验开源演示 →</button>
             </div>
           </div>
         </div>

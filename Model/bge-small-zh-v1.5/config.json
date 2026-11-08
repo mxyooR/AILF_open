@@ -1,5 +1,5 @@
 {
-  "_name_or_path": "/root/.cache/torch/sentence_transformers/BAAI_bge-small-zh/",
+  "_name_or_path": "BAAI/bge-small-zh-v1.5",
   "architectures": [
     "BertModel"
   ],

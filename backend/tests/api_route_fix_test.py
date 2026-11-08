@@ -354,8 +354,8 @@ class APIRouteFixTest:
             
             test_patient = {
                 "name": "测试患者",
-                "id_card": "110101199001011234",
-                "phone": "13800138000",
+                "id_card": "DEMO-4373882745395",
+                "phone": "00044219836",
                 "gender": "男",
                 "birth_date": "1990-01-01",
                 "address": "北京市朝阳区测试地址"

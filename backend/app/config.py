@@ -3,13 +3,15 @@ AILF Backend Configuration
 配置管理模块
 """
 import os
-import secrets
-import warnings
+from pathlib import Path
+from urllib.parse import quote
 from typing import Optional
 from dotenv import load_dotenv
 
 # 加载环境变量文件
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / "backend" / ".env", override=False)
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
 def _parse_bool(value: str, default: bool = False) -> bool:
@@ -18,32 +20,15 @@ def _parse_bool(value: str, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _load_jwt_secret() -> str:
-    configured = (os.getenv("JWT_SECRET_KEY") or "").strip()
-    if configured:
-        if len(configured) < 32:
-            warnings.warn("JWT_SECRET_KEY 长度建议至少 32 字符，当前配置安全性偏弱。")
-        return configured
-
-    generated = secrets.token_urlsafe(64)
-    warnings.warn(
-        "未设置 JWT_SECRET_KEY，已使用进程内临时随机密钥。请在环境变量中配置固定强密钥，否则重启后所有 token 失效。"
-    )
-    return generated
-
-
-def _load_developer_password() -> str:
-    configured = (os.getenv("DEVELOPER_PASSWORD") or "").strip()
-    if configured:
-        if len(configured) < 8:
-            warnings.warn("DEVELOPER_PASSWORD 长度建议至少 8 字符。")
-        return configured
-
-    generated = secrets.token_urlsafe(18)
-    warnings.warn(
-        "未设置 DEVELOPER_PASSWORD，已生成临时随机开发者密码。请在环境变量中配置强口令并妥善管理。"
-    )
-    return generated
+def _require_secret(name: str, minimum_length: int) -> str:
+    configured = os.getenv(name, "")
+    placeholder = configured.strip().lower().startswith(("your-", "change-me", "replace-me"))
+    if len(configured.strip()) < minimum_length or placeholder:
+        raise ValueError(
+            f"{name} must be configured with at least {minimum_length} characters. "
+            "Run python scripts/setup_env.py from the project root."
+        )
+    return configured
 
 
 class Settings:
@@ -51,15 +36,15 @@ class Settings:
     
     # 应用基础配置
     APP_NAME: str = "AILF Backend"
-    VERSION: str = "1.0.0"
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"  # 默认开启调试模式
+    VERSION: str = "2.0.0"
+    DEBUG: bool = _parse_bool(os.getenv("DEBUG"), default=False)
     
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "5000"))
     
     # JWT配置
-    JWT_SECRET_KEY: str = _load_jwt_secret()
+    JWT_SECRET_KEY: str = _require_secret("JWT_SECRET_KEY", 32)
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "24"))  # 保留历史字段，兼容旧逻辑
     JWT_CLOCK_SKEW_SECONDS: int = int(os.getenv("JWT_CLOCK_SKEW_SECONDS", "30"))
@@ -74,7 +59,9 @@ class Settings:
     AUTH_ALLOW_LEGACY_TOKENS: bool = _parse_bool(os.getenv("AUTH_ALLOW_LEGACY_TOKENS"), default=True)
     
     # 开发者认证配置
-    DEVELOPER_PASSWORD: str = _load_developer_password()
+    DEVELOPER_PASSWORD: str = _require_secret("DEVELOPER_PASSWORD", 12)
+    SEED_DEMO_USERS: bool = _parse_bool(os.getenv("SEED_DEMO_USERS"), default=False)
+    DEMO_USER_PASSWORD: str = _require_secret("DEMO_USER_PASSWORD", 12) if SEED_DEMO_USERS else ""
     SECURITY_AUDIT_ENABLED: bool = _parse_bool(os.getenv("SECURITY_AUDIT_ENABLED"), default=True)
 
     # 应用界面配置
@@ -98,14 +85,17 @@ class Settings:
     # 数据库配置
     DB_HOST: str = os.getenv("DB_HOST", "localhost")
     DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
-    DB_USER: str = os.getenv("DB_USER", "root")
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "123456")
+    DB_USER: str = os.getenv("DB_USER", "ailf")
+    DB_PASSWORD: str = _require_secret("DB_PASSWORD", 12)
     DB_NAME: str = os.getenv("DB_NAME", "ailf_db")
 
     @property
     def DATABASE_URL(self) -> str:
         """数据库连接URL"""
-        return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?charset=utf8mb4"
+        return (
+            f"mysql+pymysql://{quote(self.DB_USER, safe='')}:{quote(self.DB_PASSWORD, safe='')}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{quote(self.DB_NAME, safe='')}?charset=utf8mb4"
+        )
 
     # CORS配置
     CORS_ORIGINS: list = [
@@ -125,6 +115,11 @@ class Settings:
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
     CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
     CELERY_RESULT_EXPIRES: int = int(os.getenv("CELERY_RESULT_EXPIRES", "3600"))
+    AI_COMMAND_MAX_CONCURRENT: int = int(os.getenv("AI_COMMAND_MAX_CONCURRENT", "2"))
+    AI_COMMAND_MAX_PENDING: int = int(os.getenv("AI_COMMAND_MAX_PENDING", "64"))
+    AI_COMMAND_TIMEOUT_SECONDS: int = int(os.getenv("AI_COMMAND_TIMEOUT_SECONDS", "540"))
+    AI_COMMAND_CACHE_SIZE: int = int(os.getenv("AI_COMMAND_CACHE_SIZE", "1024"))
+    REDIS_AI_TASK_TTL: int = int(os.getenv("REDIS_AI_TASK_TTL", "3600"))
     CELERY_AI_QUEUE: str = os.getenv("CELERY_AI_QUEUE", "ai_inference")
     CELERY_INFERENCE_METRICS_KEY: str = os.getenv("CELERY_INFERENCE_METRICS_KEY", "ai:inference:metrics:full")
     CELERY_INFERENCE_METRICS_AGG_KEY: str = os.getenv("CELERY_INFERENCE_METRICS_AGG_KEY", "ai:inference:metrics:aggregate")

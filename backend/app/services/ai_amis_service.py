@@ -9,6 +9,7 @@ AI AMIS Service - 纯 LLM 两轮对话架构
 与训练脚本 train_pure_llm_v9.py 和数据集 dataset_v9.jsonl 对应
 """
 import logging
+import asyncio
 import json
 import html
 from typing import Dict, Any, List, Optional
@@ -115,12 +116,12 @@ class AIAmisService:
             # 如果 API 数量超过 topk，使用 BGE 召回
             if len(candidate_apis) > self.top_k_api:
                 logger.info(f"BGE召回API: {len(candidate_apis)} -> {self.top_k_api}")
-                candidate_apis = self._recall_apis(user_instruction, candidate_apis, self.top_k_api)
+                candidate_apis = await asyncio.to_thread(self._recall_apis, user_instruction, candidate_apis, self.top_k_api)
             
             # 如果 Workflow 数量超过 topk，使用 BGE 召回
             if len(candidate_workflows) > self.top_k_workflow:
                 logger.info(f"BGE召回Workflow: {len(candidate_workflows)} -> {self.top_k_workflow}")
-                candidate_workflows = self._recall_workflows(user_instruction, candidate_workflows, self.top_k_workflow)
+                candidate_workflows = await asyncio.to_thread(self._recall_workflows, user_instruction, candidate_workflows, self.top_k_workflow)
             
             logger.info(f"候选资源: {len(candidate_apis)}个API + {len(candidate_workflows)}个Workflow")
             

@@ -2,6 +2,7 @@
 API路由管理模块测试脚本
 测试所有API路由管理功能，确保完全符合文档规范
 """
+import os
 import requests
 import json
 import time
@@ -12,7 +13,7 @@ from typing import Dict, Any, Optional
 class APIRouteTestSuite:
     """API路由管理测试套件"""
     
-    def __init__(self, base_url: str = "http://localhost:5000", token: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXZlbG9wZXIiLCJ0eXBlIjoiZGV2ZWxvcGVyIiwiaWF0IjoxNzUzODU0NTM2LCJleHAiOjE3NTM4NTgxMzYsInVzZXJfdHlwZSI6ImRldmVsb3BlciJ9.2C3t1zaxdS9psFC8AP3SvTYzWf6ZeYORzFXFJn63lac"):
+    def __init__(self, base_url: str = "http://localhost:5000", token: str = os.environ.get("AILF_TEST_ACCESS_TOKEN", "")):
         """初始化测试套件"""
         self.base_url = base_url
         self.token = token

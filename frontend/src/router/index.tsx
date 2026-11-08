@@ -4,16 +4,22 @@
  */
 
 import React from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
-import MainPage from '../pages/MainPage';
-import AboutPage from '../pages/AboutPage';
-import ConfigPage from '../pages/ConfigPage';
-import RuntimeMonitorPage from '../pages/RuntimeMonitorPage';
-import NotificationsPage from '../pages/NotificationsPage';
+import { createBrowserRouter, createMemoryRouter, Navigate } from 'react-router-dom';
 import ErrorPage from '../pages/ErrorPage';
 
-// 创建路由配置
-export const router = createBrowserRouter([
+const MainPage = React.lazy(() => import('../pages/MainPage'));
+const AboutPage = React.lazy(() => import('../pages/AboutPage'));
+const ConfigPage = React.lazy(() => import('../pages/ConfigPage'));
+const RuntimeMonitorPage = React.lazy(() => import('../pages/RuntimeMonitorPage'));
+const NotificationsPage = React.lazy(() => import('../pages/NotificationsPage'));
+const DemoPage = React.lazy(() => import('../pages/DemoPage'));
+
+// The standalone Pages build stays at its static entry URL. Native section anchors
+// and refresh work without a server-side SPA rewrite or a backend route.
+export const router = process.env.REACT_APP_DEMO_ONLY === 'true'
+  ? createMemoryRouter([{ path: '*', element: <DemoPage />, errorElement: <ErrorPage /> }])
+  : createBrowserRouter([
+  { path: '/demo', element: <DemoPage />, errorElement: <ErrorPage /> },
   {
     path: '/',
     element: <MainPage />,

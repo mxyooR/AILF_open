@@ -993,8 +993,9 @@ def test_inference(lora_checkpoint_path: Optional[str] = None):
     print("="*70)
     
     # ========== 路径配置 ==========
-    BASE_MODEL_PATH = "e:/Programming/AILF/Qwen/Qwen3-4B"
-    LORA_CHECKPOINT_PATH = lora_checkpoint_path or "e:/Programming/AILF/Model/model"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE_MODEL_PATH = os.getenv("LOCAL_MODEL_BASE_PATH", os.path.join(project_root, "Qwen", "Qwen3-4B"))
+    LORA_CHECKPOINT_PATH = lora_checkpoint_path or os.getenv("LOCAL_MODEL_LORA_PATH", os.path.join(project_root, "Model", "checkpoint_epoch_2"))
     
     # 检查路径
     if not os.path.exists(BASE_MODEL_PATH):
@@ -1192,9 +1193,10 @@ def compare_checkpoints_petshop():
     print("  V11 模型评估：宠物医院场景（泛化）")
     print("="*70)
     
-    base_model = "e:/Programming/AILF/Qwen/Qwen3-4B"
-    ckpt1 = "e:/Programming/AILF/Model/checkpoint_epoch_1"
-    ckpt2 = "e:/Programming/AILF/Model/checkpoint_epoch_2"
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    base_model = os.getenv("LOCAL_MODEL_BASE_PATH", os.path.join(project_root, "Qwen", "Qwen3-4B"))
+    ckpt1 = os.path.join(project_root, "Model", "checkpoint_epoch_1")
+    ckpt2 = os.path.join(project_root, "Model", "checkpoint_epoch_2")
     
     if not os.path.exists(base_model):
         base_model = "/root/ailf/Qwen3-4B"

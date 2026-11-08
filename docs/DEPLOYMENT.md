@@ -1,418 +1,127 @@
-# AILF 部署文档
+# 部署与运行
 
-## 目录
+先选择运行范围：只体验界面用 `/demo`；运行真实自然语言推理，需要应用、数据库、消息队列、计算环境和模型权重。
 
-- [方式一：Docker 部署（推荐）](#方式一docker-部署推荐)
-- [方式二：手动安装](#方式二手动安装)
-- [方式三：生产环境部署](#方式三生产环境部署)
-- [环境变量参考](#环境变量参考)
-- [服务验证](#服务验证)
-- [常见部署问题](#常见部署问题)
+## 仅运行交互演示
 
----
-
-## 方式一：Docker 部署（推荐）
-
-最快的方式，一条命令启动所有服务。
-
-### 前置要求
-
-- Docker Engine 24+
-- Docker Compose v2+
-
-### 启动
+需要 Node.js 20+、pnpm 10.13.1。
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/mxyooR/AILF.git
-cd AILF
-
-# 2. 启动所有服务
-docker-compose up -d
-
-# 3. 查看服务状态
-docker-compose ps
-```
-
-预期输出：
-
-```
-NAME                IMAGE               STATUS          PORTS
-ailf-backend       ailf/backend        Up              0.0.0.0:5000->5000/tcp
-ailf-frontend      ailf/frontend       Up              0.0.0.0:3000->3000/tcp
-ailf-worker        ailf/worker         Up              5000/tcp
-ailf-redis         redis:7-alpine      Up              0.0.0.0:6379->6379/tcp
-ailf-mysql         mysql:8.0           Up              0.0.0.0:3306->3306/tcp
-```
-
-### 访问地址
-
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 用户端 | http://localhost:3000 | 主应用界面 |
-| 开发者面板 | http://localhost:3000/config | 配置实体、工作流 |
-| API 文档 | http://localhost:5000/docs | 交互式 API 文档 |
-| 健康检查 | http://localhost:5000/api/v1/health | 服务状态 |
-
-### 自定义配置
-
-通过环境变量文件覆盖默认配置：
-
-```bash
-# 创建 .env 文件（与 docker-compose.yml 同目录）
-cat > .env << EOF
-DB_PASSWORD=your_secure_password
-JWT_SECRET_KEY=your_jwt_secret_key_at_least_32_chars
-DEVELOPER_PASSWORD=your_developer_password
-DEBUG=false
-EOF
-
-# 重新启动
-docker-compose up -d
-```
-
-### 查看日志
-
-```bash
-# 所有服务日志
-docker-compose logs -f
-
-# 单个服务日志
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f worker
-```
-
----
-
-## 方式二：手动安装
-
-适用于开发环境或自定义部署。
-
-### 前置依赖
-
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| Python | 3.10+ | 后端运行时 |
-| Node.js | 18+ | 前端构建 |
-| pnpm | 8+ | 前端包管理器 |
-| Redis | 6+ | Celery 消息队列 & 缓存 |
-| MySQL | 8.0+ | 业务数据存储 |
-| Git | 2.0+ | 版本控制 |
-| Conda | 最新版 | Python 环境管理（推荐） |
-
-### 步骤
-
-#### 1. 克隆仓库
-
-```bash
-git clone https://github.com/mxyooR/AILF.git
-cd AILF
-```
-
-#### 2. 创建 Python 环境
-
-```bash
-conda create -n ailf_env python=3.11
-conda activate ailf_env
-python --version
-# 输出: Python 3.11.x
-```
-
-#### 3. 安装后端依赖
-
-```bash
-cd backend
-cp .env.example .env
-pip install -r requirements.txt
-python -c "import fastapi; print(f'FastAPI {fastapi.__version__} 安装成功')"
-# 输出: FastAPI 0.104.x 安装成功
-```
-
-#### 4. 初始化数据库
-
-确保 MySQL 服务已启动，然后：
-
-```bash
-cd backend
-python scripts/init_db.py
-```
-
-预期输出：
-
-```
-[1/5] 正在创建数据库 'ailf_db'...
-  ✅ 数据库 'ailf_db' 已就绪
-[2/5] 正在清理已存在的数据库表...
-  ✅ 已清理旧的数据库表结构
-[3/5] 正在创建数据表...
-  ✅ 已创建表: users, roles, permissions, entities, workflows ...
-[4/5] 正在初始化默认数据...
-  ✅ 角色管理数据初始化完成
-  ✅ 用户数据初始化完成
-[5/5] 正在验证数据库状态...
-  ✅ 数据库连接正常
-✅ 数据库初始化完成! 耗时: 3.21秒
-```
-
-#### 5. 安装前端依赖
-
-```bash
-cd frontend
-pnpm install
-pnpm --version
-# 输出: 8.x.x
-```
-
-#### 6. 配置环境变量
-
-编辑 `backend/.env`，至少修改以下配置：
-
-```bash
-# JWT 密钥（必须修改！）
-JWT_SECRET_KEY=your-secret-key-at-least-32-chars
-
-# 开发者密码（必须修改！）
-DEVELOPER_PASSWORD=your-strong-password
-
-# 数据库密码（必须修改！）
-DB_PASSWORD=your-database-password
-
-# LLM 配置（按实际情况填写）
-LLM_API_KEY=your-api-key
-LLM_BASE_URL=http://your-llm-server:8000/v1
-```
-
-编辑 `celery_worker/.env`：
-
-```bash
-CELERY_BROKER_URL=redis://localhost:6379/1
-CELERY_RESULT_BACKEND=redis://localhost:6379/1
-```
-
-#### 7. 启动服务
-
-**终端 1 - 后端服务：**
-
-```bash
-cd backend
-python main.py
-# INFO:     Uvicorn running on http://0.0.0.0:5000
-# INFO:     API documentation available at http://localhost:5000/docs
-```
-
-**终端 2 - 前端开发服务器：**
-
-```bash
-cd frontend
+git clone https://github.com/mxyooR/AILF_open.git
+cd AILF_open
+pnpm install --frozen-lockfile
 pnpm dev
-# VITE v5.x.x  ready in 200 ms
-# ➜  Local:   http://localhost:3000/
 ```
 
-**终端 3 - Celery Worker：**
+打开 http://localhost:3000/demo。已有环境可以复用，无需重复安装。此模式无需 `.env`、数据库或模型。
+
+Docker 方式：
 
 ```bash
-cd celery_worker
-
-# Windows
-powershell -File start_celery_worker.ps1
-
-# Linux / macOS
-celery -A celery_app.celery_app worker --loglevel=info
-
-# [INFO] Celery worker 'celery@hostname' is ready
+docker compose -f docker-compose.demo.yml up --build -d
 ```
 
-#### 8. 验证安装
+## GitHub Pages 在线演示
+
+本仓库的静态演示发布到 **https://mxyooR.github.io/AILF_open/**。CI 在主分支提交后先运行内容扫描、离线测试和前端检查，再上传构建产物并由 GitHub Actions 发布 Pages。
+
+演示构建设置 `REACT_APP_DEMO_ONLY=true` 与 `PUBLIC_URL=/AILF_open`。前者只展示演示入口并将内部导航留在内存中，后者设置静态资源前缀，因此访问仓库子路径、页内锚点和刷新均不依赖服务器路由回退。默认 `pnpm build` 保持完整应用模式。
+
+自行部署同类项目时，在仓库 Settings → Pages 中选择 **GitHub Actions** 作为来源，并按仓库名设置 `PUBLIC_URL`。站点只包含前端静态文件，不上传 `.env`、模型或数据库，也不提供真实业务推理。
+
+## 完整应用：Docker
+
+需要 Docker Compose v2。推理 Worker 还需要 NVIDIA GPU、驱动与 NVIDIA Container Toolkit；模型采用量化加载，实际显存需求应根据权重和上下文长度测量。
 
 ```bash
-curl http://localhost:5000/api/v1/health
-# {"status": "healthy", "version": "1.0.0", ...}
+python scripts/setup_env.py
+docker compose up --build -d
+docker compose ps
 ```
 
-#### 9. 一键启动脚本（Windows）
+配置脚本仅创建不存在的根目录 `.env`，生成独立随机凭据且不输出明文。`.env` 被 Git 和 Docker 构建上下文忽略。Compose 要求配置数据库和认证凭据，不提供固定密码回退。
 
-项目根目录提供了 `start_all_services.ps1`，可一键启动所有服务：
+访问地址：
 
-```powershell
-# 默认使用 D:/redis 作为 Redis 目录
-.\start_all_services.ps1
+| 地址 | 用途 |
+| --- | --- |
+| http://localhost:3000/demo | 浏览器内演示 |
+| http://localhost:3000 | 完整应用 |
+| http://localhost:3000/config | 开发者业务配置 |
+| http://localhost:5000/docs | 当前代码生成的 API 文档 |
 
-# 指定项目根目录和 Redis 目录
-.\start_all_services.ps1 -ProjectRoot "C:\AILF" -RedisDir "C:\redis"
-```
+开发者密码由本地 `.env` 中的 `DEVELOPER_PASSWORD` 提供。默认不创建公开测试账号；业务用户通过注册或开发者面板创建。数据服务端口和应用端口默认绑定本机地址。
 
-脚本会自动：
-1. 启动 Redis 服务
-2. 启动 FastAPI 后端（新窗口）
-3. 启动前端开发服务器（新窗口）
-4. 启动 Celery Worker（新窗口）
+MySQL 使用专用应用用户。应用启动会创建或调整表结构，请只连接用于该部署的数据库。已有数据卷不会因更改 `.env` 自动修改数据库密码。
 
-> **注意**：该脚本依赖 Conda 环境 `ailf_env`，请确保已创建环境并安装了所有依赖。
+## 模型与 Worker
 
----
+Git 中不包含基础模型、LoRA 或 embedding 的权重文件。目录中的适配器配置不能替代权重。准备以下本地文件：
 
-## 方式三：生产环境部署
+| 目录 / 配置 | 内容 |
+| --- | --- |
+| `Qwen/Qwen3-4B` / `LOCAL_MODEL_BASE_PATH` | 完整的 Qwen3-4B 模型与 tokenizer |
+| `Model/checkpoint_epoch_2` / `LOCAL_MODEL_LORA_PATH` | 与训练数据和基础模型兼容的 LoRA 权重与适配器配置 |
+| `Model/bge-small-zh-v1.5` / `EMBEDDING_MODEL_PATH` | 完整的 BGE embedding 模型 |
 
-### 使用 Docker Compose 生产部署
+基础模型来源：[Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B)、[bge-small-zh-v1.5](https://huggingface.co/BAAI/bge-small-zh-v1.5)。下载与使用遵循各自许可。LoRA 可按 [Model 说明](../Model/README.md)训练；本仓库不提供外部权重下载承诺。
 
 ```bash
-# 1. 创建生产环境配置
-cp backend/.env.example backend/.env.production
-# 编辑 backend/.env.production 填入生产配置
-
-# 2. 构建并启动
-docker-compose up -d --build
-
-# 3. 查看日志
-docker-compose logs -f
+docker compose --profile inference up --build -d worker
+docker compose logs -f worker
 ```
 
-### 生产环境注意事项
+模型目录以只读卷挂载，不复制进镜像。后端只安装 HTTP 编排依赖，模型依赖在独立 Worker 环境安装。
 
-1. **修改所有默认密码和密钥**
-2. **关闭调试模式**：设置 `DEBUG=false`
-3. **配置 HTTPS**：前端使用反向代理（Nginx）配置 SSL
-4. **数据库备份**：定期备份 MySQL 数据
-5. **日志管理**：配置日志轮转，避免磁盘写满
-6. **Worker 扩展**：多台机器启动 Worker 消费同一队列即可水平扩展
+## 手动运行完整应用
 
-### 反向代理配置示例（Nginx）
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    # 前端静态文件
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-    }
-
-    # API 反向代理
-    location /api/ {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
----
-
-## 环境变量参考
-
-### 后端环境变量 (`backend/.env`)
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DEBUG` | `true` | 调试模式 |
-| `HOST` | `0.0.0.0` | 监听地址 |
-| `PORT` | `5000` | 监听端口 |
-| `JWT_SECRET_KEY` | (自动生成) | JWT 签名密钥，至少 32 字符 |
-| `JWT_EXPIRE_HOURS` | `24` | Token 过期时间 |
-| `DEVELOPER_PASSWORD` | (自动生成) | 开发者面板密码 |
-| `DB_HOST` | `localhost` | 数据库地址 |
-| `DB_PORT` | `3306` | 数据库端口 |
-| `DB_USER` | `root` | 数据库用户 |
-| `DB_PASSWORD` | `123456` | 数据库密码 |
-| `DB_NAME` | `ailf_db` | 数据库名称 |
-| `REDIS_HOST` | `localhost` | Redis 地址 |
-| `REDIS_PORT` | `6379` | Redis 端口 |
-| `REDIS_PASSWORD` | (空) | Redis 密码 |
-| `CELERY_BROKER_URL` | `redis://localhost:6379/1` | Celery 消息队列 |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
-| `CONFIGURATION_COMPLETED` | `false` | 是否跳过配置检查 |
-
-### Worker 环境变量 (`celery_worker/.env`)
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `CELERY_BROKER_URL` | `redis://localhost:6379/1` | Broker 地址 |
-| `CELERY_RESULT_BACKEND` | `redis://localhost:6379/1` | 结果后端 |
-| `MODEL_PRELOAD_ON_WORKER_START` | `true` | 是否预加载模型 |
-| `LOCAL_MODEL_BASE_PATH` | `Qwen/Qwen3-4B` | LLM 模型路径 |
-| `LOCAL_MODEL_LORA_PATH` | `Model/checkpoint_epoch_2` | LoRA 权重路径 |
-| `EMBEDDING_MODEL_PATH` | `Model/bge-small-zh-v1.5` | 嵌入模型路径 |
-| `LLM_TEMPERATURE` | `0.3` | 生成温度 |
-
----
-
-## 服务验证
-
-### 健康检查端点
+推荐 Python 3.11 / 3.12，另需 MySQL 8、Redis 7。已有 Conda 环境可以直接使用。下列命令从仓库根目录执行。
 
 ```bash
-# 基础健康检查
-curl http://localhost:5000/api/v1/health
-
-# 数据库健康检查
-curl http://localhost:5000/health/database
+python scripts/setup_env.py
+pip install -r backend/requirements.txt
+python backend/main.py
 ```
 
-### 验证数据库
+启动前，在 MySQL 中为独立库创建有建表权限的应用用户，并根据本机实际环境修改 `.env`。不要将文档中的测试命令指向有重要业务数据的数据库。
+
+另一个终端运行 `pnpm dev`。在准备模型权重和匹配 CUDA 的 PyTorch 后，单独运行 Worker：
 
 ```bash
-cd backend
-python -c "
-from app.core.database import db_manager
-health = db_manager.health_check()
-print(health)
-"
+pip install -r celery_worker/requirements.txt
+python -m celery -A celery_worker.celery_app:celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q ai_inference
 ```
 
-### 验证 Worker
+Worker 必须从仓库根目录运行。Windows 也可使用 `celery_worker/start_celery_worker.ps1`。基础模型与 LoRA 路径默认相对项目目录；自定义路径建议使用绝对路径。
 
-```bash
-cd backend
-python scripts/check_celery_worker.py
-```
+## 配置约定
 
----
+后端配置优先级：进程环境变量 → `backend/.env` → 根目录 `.env`。Worker 配置优先级：进程环境变量 → `celery_worker/.env` → 根目录 `.env` → `backend/.env`。
 
-## 常见部署问题
+| 变量 | 用途 |
+| --- | --- |
+| `JWT_SECRET_KEY` | 至少 32 字符；进程间共享的 JWT 签名密钥 |
+| `DEVELOPER_PASSWORD` | 至少 12 字符；开发者配置认证 |
+| `DB_PASSWORD` | 至少 12 字符；应用数据库密码 |
+| `MYSQL_ROOT_PASSWORD` | Compose 数据库管理员密码，独立于应用密码 |
+| `DEBUG` | 默认 `false`，本地调试可显式开启 |
+| `SEED_DEMO_USERS` | 默认 `false`；若开启，还需设置 `DEMO_USER_PASSWORD` |
+| `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | 后端与推理 Worker 使用同一 Redis 队列 |
+| `AI_COMMAND_MAX_CONCURRENT` / `AI_COMMAND_MAX_PENDING` | 单进程活跃编排数 / 未完成任务总量，默认 2 / 64；满载返回 429 |
+| `AI_COMMAND_TIMEOUT_SECONDS` | 排队与执行的等待上限，默认 540 秒 |
+| `AI_COMMAND_CACHE_SIZE` / `REDIS_AI_TASK_TTL` | 本地状态条数 / 状态 TTL，默认 1024 / 3600 秒 |
 
-### MySQL 连接失败
+后端拒绝缺失、过短和指定格式的占位认证凭据。更完整的可选配置见 `backend/.env.example` 与 `celery_worker/.env.example`。
 
-**现象**：后端启动时报 `Can't connect to MySQL server`
+命令运行时要求 `cache >= pending >= concurrent >= 1` 且 `TTL > timeout > 0`。状态 TTL 从最近一次状态更新计算，轮询不续期。查询必须携带提交时返回的 `poll_token`，详见[异步 API 约定](ASYNC_COMMANDS.md)。前端与后端应一起升级，旧的仅凭 `task_id` 查询方式不再受支持。
 
-**解决**：
+这些限制按后端进程计算，不是集群限流。Redis 回退状态只存在当前进程；重启不自动恢复编排，也不会因编排超时撤销已派发的 GPU 作业。默认 Docker Worker 以单进程顺序消费模型队列，调整计算并行度前应测量显存和真实请求负载。
 
-1. 确认 MySQL 服务已启动
-2. 检查 `.env` 中的数据库配置是否正确
-3. 确认 MySQL 用户有远程访问权限（Docker 部署时）
+## 验证与已知限制
 
-### Redis 连接失败
+离线测试、前端构建和 Compose 配置检查的实际结果见[验证记录](VALIDATION.md)。它们不替代 GPU 模型加载、完整业务流程、容器镜像构建或并发测试。
 
-**现象**：Celery Worker 无法启动
-
-**解决**：
-
-1. 确认 Redis 服务已启动：`redis-cli ping` 应返回 `PONG`
-2. 检查 Redis 配置中的绑定地址和密码
-
-### 模型加载失败
-
-**现象**：Worker 启动时模型加载失败
-
-**解决**：
-
-1. 确认模型文件已下载到正确路径
-2. 检查 `LOCAL_MODEL_BASE_PATH` 和 `LOCAL_MODEL_LORA_PATH` 配置
-3. GPU 显存不足时，尝试设置 `CELERY_WORKER_CONCURRENCY=1` 和 `CELERY_WORKER_POOL=solo`
-
-### 前端 API 请求失败
-
-**现象**：前端页面加载但 API 请求返回 502
-
-**解决**：
-
-1. 确认后端服务已启动
-2. 检查前端代理配置（`craco.config.js` 中的 `proxy.target`）
-3. CORS 配置：确认 `backend/app/config.py` 中的 `CORS_ORIGINS` 包含前端地址
+- 演示使用本地合成数据，不执行真实支付、出票或预约。
+- 原型保留部分旧依赖版本和历史集成脚本，公开部署前应单独完成依赖升级、隔离、TLS、限流和集成验证。
+- 现有本地启动脚本含 Conda / Redis 的环境约定，不作为跨平台的一键部署入口。
+- 不建议运行 `pytest backend/tests/` 作为离线检查，旧脚本可能连接服务或修改数据。

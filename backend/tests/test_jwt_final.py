@@ -13,7 +13,7 @@ from app.core.database import get_db
 def test_jwt_verification():
     """测试JWT验证"""
     # 测试token（从浏览器获取）
-    test_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMiwidXNlcm5hbWUiOiJwbGF5d3JpZ2h0X3Rlc3RfdXNlciIsInJvbGVfaWQiOiJyb2xlXzE3NTMzNjIyMTA1ODJfMzM5MCIsInJvbGVfY29kZSI6InJlZ3VsYXJfdXNlciIsInVzZXJfdHlwZSI6InVzZXIiLCJpYXQiOjE3NTQzMjMxMjIsImV4cCI6MTc1NDMyNjcyMn0.nOPOUIZYI8NMcXy6mZO8pkkZ9TaPStFsPWsF6Zi53-U"
+    test_token = os.environ.get("AILF_TEST_ACCESS_TOKEN", "")
 
     print("🔍 测试JWT验证逻辑")
     print("-" * 50)

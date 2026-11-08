@@ -263,7 +263,7 @@ class UserTokenManager {
       const { apiClient } = await import('./apiClient');
       apiClient.setUserToken(token);
       if (token) {
-        console.log('[UserTokenManager] User token set to apiClient:', token.substring(0, 50) + '...');
+        console.log('[UserTokenManager] User session updated');
       } else {
         console.log('[UserTokenManager] User token cleared from apiClient');
       }

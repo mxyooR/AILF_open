@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible problem using redacted information.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and run mode
+      description: Browser demo or full stack; OS, runtime and browser versions.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result and actual result
+      description: Use synthetic inputs and remove account details, tokens and local paths.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted diagnostics
+      description: Never include .env files, credentials, database exports or personal information.

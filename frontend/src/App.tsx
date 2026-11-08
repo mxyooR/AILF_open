@@ -11,7 +11,7 @@ import './styles/breathing-effects.css';
 import './styles/developer/developer-config.css';
 
 const App: React.FC = () => {
-  return <RouterProvider router={router} />;
+  return <React.Suspense fallback={<div role="status" style={{ padding: 32 }}>正在加载 AILF…</div>}><RouterProvider router={router} /></React.Suspense>;
 };
 
 export default App;

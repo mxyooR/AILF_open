@@ -53,7 +53,7 @@ const SiriAnimation: React.FC<SiriAnimationProps> = ({
 
     try {
       // 动态导入SiriWave库
-      import('../lib/siriwave.js').then((SiriWaveModule: any) => {
+      import('siriwave').then((SiriWaveModule: any) => {
         console.log('SiriWave module loaded:', SiriWaveModule);
         const SiriWave = SiriWaveModule.default || SiriWaveModule;
 

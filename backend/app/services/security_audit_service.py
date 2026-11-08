@@ -23,6 +23,8 @@ _SENSITIVE_KEYS = {
     "access_token",
     "refresh_token",
     "authorization",
+    "poll_token",
+    "x-task-token",
 }
 
 
