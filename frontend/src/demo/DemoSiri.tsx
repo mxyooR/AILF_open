@@ -105,7 +105,7 @@ export default function DemoSiri({ onSelectScenario }: Props) {
       <AppleRibbonBackground />
       <header className="demo-siri-nav">
         <a className="demo-siri-brand" href="#demo-top">AILF <span>OPEN SOURCE</span></a>
-        <nav aria-label="演示导航"><a href="#playground">示例工作台 ↓</a><a href={REPO} target="_blank" rel="noreferrer">GitHub ↗</a>{process.env.REACT_APP_DEMO_ONLY === 'true' ? <a className="demo-siri-nav-app" href={`${REPO}/blob/master/docs/DEPLOYMENT.md`} target="_blank" rel="noreferrer">部署完整应用 ↗</a> : <Link className="demo-siri-nav-app" to="/">进入应用 ↗</Link>}</nav>
+        <nav aria-label="演示导航"><a href="#playground">示例工作台 ↓</a><a href="#workflow">工作流节点 ↓</a><a href={REPO} target="_blank" rel="noreferrer">GitHub ↗</a>{process.env.REACT_APP_DEMO_ONLY === 'true' ? <a className="demo-siri-nav-app" href={`${REPO}/blob/master/docs/DEPLOYMENT.md`} target="_blank" rel="noreferrer">部署完整应用 ↗</a> : <Link className="demo-siri-nav-app" to="/">进入应用 ↗</Link>}</nav>
       </header>
       <div className="demo-siri-content">
         <div className="demo-siri-heading"><h1>AILF</h1><p>AI Language Frontend</p></div>

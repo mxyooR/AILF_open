@@ -28,6 +28,8 @@ This repository is the public edition: application code, three business template
 
 The `/demo` playground opens with the application's original Siri-style orb and animated aurora background. Type an example request or choose a railway, product or appointment preset; edit its form, select a result and inspect the AMIS Schema. Optional speech input uses the browser's recognition service.
 
+The [workflow editor](docs/WORKFLOW_EDITOR.md) below it supports adding and editing nodes, connecting steps, setting conditions, saving and reloading page-local configuration, and read-only browsing.
+
 **[Open the hosted playground →](https://mxyooR.github.io/AILF_open/)** · [Demo walkthrough](docs/DEMO.md)
 
 ```bash
@@ -61,7 +63,9 @@ The built-in templates are **railway ticketing, basic ecommerce and hospital man
 <details>
 <summary>Developer workflow canvas</summary>
 
-![Visual workflow editor](screenshots/screenshot-workflow-form.png)
+![Workflow editor in the full local application](screenshots/app-workflow-canvas.jpg)
+
+This screenshot shows an existing ticket-change workflow in the full application. The hosted playground uses separate synthetic configuration. [Node operations and save contract](docs/WORKFLOW_EDITOR.md).
 
 </details>
 

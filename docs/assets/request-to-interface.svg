@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="#527c73"/></marker></defs>
+<rect width="1440" height="760" fill="#f6f8f4"/>
+<g font-family="Microsoft YaHei, sans-serif" fill="#1c3934">
+<text x="70" y="76" font-size="15" letter-spacing="3" fill="#5e8076">AILF / FROM REQUEST TO INTERFACE</text>
+<text x="70" y="134" font-size="36" font-weight="700">用户说需求，系统组织下一步界面</text>
+<text x="70" y="173" font-size="19" fill="#6a7e76">完整应用的代码链路 · 业务能力由开发者预先配置</text>
+<g stroke="#c8d8d0" fill="#fff"><rect x="70" y="233" width="290" height="134" rx="18"/><rect x="445" y="233" width="290" height="134" rx="18"/><rect x="820" y="233" width="550" height="134" rx="18"/><rect x="70" y="455" width="290" height="134" rx="18"/><rect x="445" y="455" width="290" height="134" rx="18"/><rect x="820" y="455" width="550" height="134" rx="18"/></g>
+<g font-size="24" font-weight="600"><text x="96" y="280">01  文字 / 语音输入</text><text x="471" y="280">02  业务候选召回</text><text x="846" y="280">03  意图选择 + 槽位提取</text><text x="96" y="502">06  下一步业务操作</text><text x="471" y="502">05  React + AMIS</text><text x="846" y="502">04  工作流状态 → Schema</text></g>
+<g font-size="18" fill="#678077"><text x="96" y="322">Siri 光球与文字入口</text><text x="471" y="322">BGE / API 与工作流候选</text><text x="846" y="322">Qwen3 + LoRA · 独立 Celery Worker</text><text x="96" y="544">权限检查 → 动态 API</text><text x="471" y="544">检查字段、修改、确认</text><text x="846" y="544">FastAPI 编排当前节点所需的表单与操作</text></g>
+<g fill="none" stroke="#527c73" stroke-width="3" marker-end="url(#arrow)"><path d="M368 300H431"/><path d="M743 300H806"/><path d="M1095 377V441"/><path d="M808 522H749"/><path d="M433 522H374"/></g>
+<path d="M215 604V650H1095V604" fill="none" stroke="#a3b9af" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="530" y="682" font-size="18" fill="#678077">业务结果更新上下文，推进工作流</text>
+<text x="70" y="725" font-size="15" fill="#7c8d84">Pages 在线体验使用预置意图与合成数据；完整推理和真实业务接入需独立部署验证。</text>
+</g></svg>

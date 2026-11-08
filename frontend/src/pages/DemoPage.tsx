@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { render as renderAmis } from 'amis';
 import { buildDemoSchema, handleDemoRequest, scenarios, ScenarioId } from '../demo/scenarios';
 import './DemoPage.css';
 import DemoSiri from '../demo/DemoSiri';
 
 const REPO = 'https://github.com/mxyooR/AILF_open';
+const DemoWorkflow = lazy(() => import('../demo/DemoWorkflow'));
 const DemoPage: React.FC = () => {
   const [selected, setSelected] = useState<ScenarioId>('railway');
   const [active, setActive] = useState<ScenarioId>('railway');
@@ -12,6 +13,7 @@ const DemoPage: React.FC = () => {
   const [view, setView] = useState<'interface' | 'schema'>('interface');
   const [confirmed, setConfirmed] = useState('');
   const [siriResultOpen, setSiriResultOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const scenario = scenarios.find(item => item.id === active)!;
   const selectedScenario = scenarios.find(item => item.id === selected)!;
@@ -63,8 +65,13 @@ const DemoPage: React.FC = () => {
             </div>
           </div>
         </section>
+        <section id="workflow" className="demo-playground">
+          <div className="demo-section-heading"><div><p className="demo-eyebrow">02 / WORKFLOW STUDIO</p><h2>把业务步骤，连成看得见的流程。</h2></div><a className="demo-text-link" href={`${REPO}/blob/master/docs/WORKFLOW_EDITOR.md`} target="_blank" rel="noreferrer">节点与执行链路 ↗</a></div>
+          <p className="demo-workflow-intro">体验完整应用使用的工作流编辑器：编辑节点、设置条件、连接步骤并查看保存配置。这里使用合成数据，保存仅在当前页面生效。</p>
+          {workflowOpen ? <Suspense fallback={<p role="status">正在打开工作流编辑器…</p>}><DemoWorkflow /></Suspense> : <button className="demo-primary" onClick={() => setWorkflowOpen(true)}>打开工作流演示 <span>→</span></button>}
+        </section>
         <section id="architecture" className="demo-architecture">
-          <div className="demo-section-heading"><div><p className="demo-eyebrow">02 / UNDER THE INTERFACE</p><h2>让生成有依据，让执行有边界。</h2></div><a className="demo-text-link" href={`${REPO}/blob/master/docs/ARCHITECTURE.md`} target="_blank" rel="noreferrer">查看架构设计 ↗</a></div>
+          <div className="demo-section-heading"><div><p className="demo-eyebrow">03 / UNDER THE INTERFACE</p><h2>让生成有依据，让执行有边界。</h2></div><a className="demo-text-link" href={`${REPO}/blob/master/docs/ARCHITECTURE.md`} target="_blank" rel="noreferrer">查看架构设计 ↗</a></div>
           <div className="demo-design-grid">
             <article><span>01 / UNDERSTAND</span><h3>先理解，再生成</h3><p>从业务图谱召回候选 API 与工作流，两轮推理完成意图选择和槽位提取，再由服务端组装界面。</p><code>BGE → Qwen3 + LoRA</code></article>
             <article><span>02 / ORCHESTRATE</span><h3>界面跟随流程</h3><p>开发者配置实体、路由与流程节点。工作流执行器推进状态，Schema 策略将当前步骤转为表单与结果视图。</p><code>Workflow → Schema → AMIS</code></article>

@@ -53,6 +53,7 @@ html:has(.demo-page), body.demo-body { background: #f5f6f4 !important; backgroun
 .demo-stack-strip b { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; font-weight: 500; }
 .demo-stack-strip i { width: 3px; height: 3px; border-radius: 50%; background: #b7c4ba; }
 .demo-playground, .demo-architecture { max-width: 1320px; margin: auto; padding: 72px 48px 0; scroll-margin-top: 24px; }
+.demo-workflow-intro { color: #718268; font-size: 13px; line-height: 1.9; margin: -8px 0 24px; }
 .demo-section-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 28px; }
 .demo-section-heading .demo-eyebrow { margin-bottom: 13px; }
 .demo-section-heading h2 { font-size: 28px; line-height: 1.4; letter-spacing: -.6px; margin: 0; font-weight: 650; }

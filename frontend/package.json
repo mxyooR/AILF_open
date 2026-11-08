@@ -27,7 +27,7 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
-    "test": "craco test",
+    "test": "node test/run-tests.cjs",
     "eject": "react-scripts eject",
     "dev": "pnpm start",
     "install:pnpm": "pnpm install"

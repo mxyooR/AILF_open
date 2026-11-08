@@ -11,12 +11,9 @@ import {
   Button,
   Space,
   Card,
-  Divider,
   Row,
   Col,
   Typography,
-  Switch,
-  InputNumber,
   Alert,
   message,
 } from 'antd';
@@ -24,19 +21,11 @@ import {
 import {
   SaveOutlined,
   CloseOutlined,
-  ApiOutlined,
-  FormOutlined,
-  BranchesOutlined,
-  NotificationOutlined,
-  PlusOutlined,
-  DeleteOutlined,
 } from '@ant-design/icons';
 import type {
   WorkflowNode,
   NodeType,
   APICallConfig,
-  UserInputConfig,
-  ConditionConfig,
   NotificationConfig
 } from '../../../types/developer/workflowTypes';
 import { routeAPI } from '../../../services/developer/routeAPI';
@@ -45,39 +34,41 @@ import './NodeEditor.css';
 
 const { TextArea } = Input;
 const { Option } = Select;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface NodeEditorProps {
   node: WorkflowNode;
   onSave: (updatedNode: WorkflowNode) => void;
   onCancel: () => void;
+  availableRoutes?: APIRoute[];
 }
 
-const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
+const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel, availableRoutes }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [apiRoutes, setApiRoutes] = useState<APIRoute[]>([]);
   const [loadingRoutes, setLoadingRoutes] = useState(false);
 
-  // 获取API路由列表
-  const fetchApiRoutes = async () => {
+  // Routes may be injected for the standalone editor demo.
+  useEffect(() => {
     if (node.type !== 'api_call') return;
-
+    if (availableRoutes !== undefined) {
+      setApiRoutes(availableRoutes);
+      return;
+    }
+    let cancelled = false;
     setLoadingRoutes(true);
-    try {
-      const response = await routeAPI.getRoutes({ status: 'active', page: 1, limit: 100 });
+    routeAPI.getRoutes({ status: 'active', page: 1, limit: 100 }).then(response => {
+      if (cancelled) return;
       if (response.code === 200 && response.data) {
         setApiRoutes(response.data.routes || []);
       } else {
         message.error(response.message || '获取API路由列表失败');
       }
-    } catch (error) {
-      console.error('Failed to fetch API routes:', error);
-      message.error('获取API路由列表失败');
-    } finally {
-      setLoadingRoutes(false);
-    }
-  };
+    }).catch(() => { if (!cancelled) message.error('获取API路由列表失败'); })
+      .finally(() => { if (!cancelled) setLoadingRoutes(false); });
+    return () => { cancelled = true; };
+  }, [node.type, availableRoutes]);
 
   // 初始化表单数据
   useEffect(() => {
@@ -95,6 +86,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
       name: node.name,
       description: node.description,
       outputs: node.outputs || [],
+      selected_route: undefined,
       ai_purpose: aiInstructions.purpose,
       ai_action: aiInstructions.action,
       ai_user_message: aiInstructions.user_message,
@@ -110,12 +102,14 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
       formValues.parameters = JSON.stringify(config.parameters || {}, null, 2);
       formValues.ui_mode = config.ui_mode || 'auto';
       formValues.context_fields = config.context_fields || [];
-      // 获取API路由列表
-      fetchApiRoutes();
     } else if (node.type === 'condition' && config) {
       formValues.conditions = config.conditions || [];
       formValues.logic = config.logic || 'and';
       formValues.evaluation_expression = config.evaluation_expression;
+    } else if (node.type === 'notification') {
+      formValues.message = config?.message || '';
+      formValues.notification_type = config?.type || 'info';
+      formValues.channels = config?.channels || [];
     } else {
       // 其他节点类型的配置
       Object.assign(formValues, config);
@@ -132,10 +126,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
         // 根据api_id找到对应的路由
         const matchingRoute = apiRoutes.find(route => route.api_id === config.api_id);
         if (matchingRoute) {
-          console.log('🔍 找到匹配的API路由:', matchingRoute.name, 'ID:', matchingRoute.id);
-          form.setFieldValue('selected_route', matchingRoute.id);
-        } else {
-          console.warn('⚠️ 未找到匹配的API路由，api_id:', config.api_id);
+          form.setFieldsValue({ selected_route: matchingRoute.id });
         }
       }
     }
@@ -165,7 +156,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
 
       onSave(updatedNode);
     } catch (error) {
-      console.error('Form validation failed:', error);
+      if (error instanceof SyntaxError) message.error('请求参数必须是有效的 JSON');
     } finally {
       setLoading(false);
     }
@@ -186,11 +177,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
       
       // user_input 已废弃，所有用户输入通过 api_call 的 POST 表单完成
       case 'condition':
-        return {
-          conditions: values.conditions || [],
-          logic: values.logic || 'and',
-          evaluation_expression: values.evaluation_expression,
-        } as ConditionConfig;
+        // Branch routing is configured on outgoing edges. Preserve legacy node metadata.
+        return { ...node.config };
       
       case 'notification':
         return {
@@ -294,7 +282,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
             >
               <Input.TextArea
                 rows={6}
-                placeholder='{"key": "{{node_id.output_name}}"}'
+                placeholder='{"department": "${department}"}'
               />
             </Form.Item>
 
@@ -328,11 +316,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
               message="数据引用语法"
               description={
                 <div>
-                  <p>使用 <code>{`{{节点ID.输出名称}}`}</code> 语法引用前置节点的输出数据：</p>
+                  <p>使用 <code>{'${字段名}'}</code> 引用会话数据，也可以读取前置 API 的结果：</p>
                   <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
-                    <li><code>{`{{user_input-123.user_name}}`}</code> - 引用用户输入节点的用户名</li>
-                    <li><code>{`{{api_call-456.result}}`}</code> - 引用API调用节点的结果</li>
-                    <li><code>{`{{condition-789.decision}}`}</code> - 引用条件判断节点的决策</li>
+                    <li><code>{'${department}'}</code> — 引用输入的科室</li>
+                    <li><code>{'${lookup_result.total}'}</code> — 引用 lookup 节点的结果字段</li>
+                    <li><code>{'${last_api_result.total}'}</code> — 引用最近一次 API 的结果字段</li>
                   </ul>
                 </div>
               }
@@ -356,116 +344,17 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onCancel }) => {
       case 'condition':
         return (
           <Card title="条件判断配置" size="small" className="config-section">
-            <Form.Item
-              name="logic"
-              label="条件逻辑"
-            >
-              <Select defaultValue="and">
-                <Option value="and">所有条件都满足 (AND)</Option>
-                <Option value="or">任一条件满足 (OR)</Option>
-              </Select>
-            </Form.Item>
-
-            <Divider orientation="left" plain>条件设置</Divider>
-
-            <Form.List name="conditions">
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name, ...restField }) => (
-                    <Card key={key} size="small" style={{ marginBottom: 16 }}>
-                      <Row gutter={16}>
-                        <Col span={6}>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'field']}
-                            label="字段"
-                            rules={[{ required: true, message: '请输入字段名' }]}
-                          >
-                            <Input placeholder="user.age" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'operator']}
-                            label="操作符"
-                            rules={[{ required: true, message: '请选择操作符' }]}
-                          >
-                            <Select>
-                              <Option value="equals">等于</Option>
-                              <Option value="not_equals">不等于</Option>
-                              <Option value="greater_than">大于</Option>
-                              <Option value="less_than">小于</Option>
-                              <Option value="contains">包含</Option>
-                              <Option value="not_contains">不包含</Option>
-                              <Option value="exists">存在</Option>
-                              <Option value="not_exists">不存在</Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col span={6}>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'value']}
-                            label="比较值"
-                          >
-                            <Input placeholder="18" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={4}>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'data_type']}
-                            label="数据类型"
-                          >
-                            <Select defaultValue="string">
-                              <Option value="string">文本</Option>
-                              <Option value="number">数字</Option>
-                              <Option value="boolean">布尔</Option>
-                              <Option value="array">数组</Option>
-                              <Option value="object">对象</Option>
-                            </Select>
-                          </Form.Item>
-                        </Col>
-                        <Col span={2}>
-                          <Button
-                            type="text"
-                            danger
-                            onClick={() => remove(name)}
-                            style={{ marginTop: 30 }}
-                          >
-                            删除
-                          </Button>
-                        </Col>
-                      </Row>
-                    </Card>
-                  ))}
-                  <Form.Item>
-                    <Button type="dashed" onClick={() => add()} block>
-                      + 添加条件
-                    </Button>
-                  </Form.Item>
-                </>
-              )}
-            </Form.List>
-
-            <Divider orientation="left" plain>高级设置</Divider>
-            <Form.Item
-              name="evaluation_expression"
-              label="自定义表达式"
-            >
-              <TextArea
-                rows={3}
-                placeholder="{{nodes.search_api.outputs.count}} > 0 && {{user.role}} === 'admin'"
-              />
-            </Form.Item>
             <Alert
-              message="表达式语法提示"
-              description="使用 {{}} 语法引用节点输出，支持 JavaScript 表达式。如果设置了自定义表达式，将忽略上面的条件设置。"
+              message="在出边上设置分支条件"
+              description="关闭此面板，点击连线标签编辑条件。系统按出边顺序选择第一个满足条件的步骤；将“总是执行”的兜底分支放在最后。支持 total > 0、verified == true 等单字段比较。"
               type="info"
               showIcon
               className="syntax-tip"
             />
+            {(node.child_nodes || []).map(child => <p key={child.node_id} style={{ margin: '16px 0 0' }}>
+              <code>{child.condition.expression || child.condition.type}</code> → {child.node_id}<br />
+              <Text type="secondary">{child.condition.description}</Text>
+            </p>)}
           </Card>
         );
 

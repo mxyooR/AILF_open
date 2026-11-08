@@ -99,7 +99,6 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
       setLoading(true);
 
       // 调试认证状态
-      console.log('loadWorkflows - authState:', authState);
       console.log('loadWorkflows - isAuthenticated:', authState.isAuthenticated);
       console.log('loadWorkflows - token exists:', !!authState.token);
 
@@ -348,7 +347,6 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
 
       // 只有在认证成功时才调用API
       if (isAuthenticated && hasValidToken) {
-        console.log('🔄 准备保存工作流到后端:', workflow);
 
         // 构建符合API文档要求的请求数据
         const updateRequest: WorkflowUpdateRequest = {
@@ -365,13 +363,6 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
             complexity: workflow.metadata?.complexity || 'medium'
           }
         };
-
-        console.log('📤 发送PUT请求到后端:', updateRequest);
-        updateRequest.nodes?.forEach((n, i) => {
-          console.log(`📤 节点${i+1}: ${n.name} (${n.id})`);
-          console.log(`   child_nodes: ${JSON.stringify(n.child_nodes)}`);
-          console.log(`   parent_nodes: ${JSON.stringify(n.parent_nodes)}`);
-        });
 
         const response = await workflowAPI.updateWorkflow(selectedWorkflow, updateRequest);
 

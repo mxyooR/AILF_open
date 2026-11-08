@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10" fill="#527c73"/></marker></defs>
+<rect width="1440" height="760" fill="#f6f8f4"/>
+<g font-family="Microsoft YaHei, sans-serif" fill="#1c3934">
+<text x="70" y="76" font-size="15" letter-spacing="3" fill="#5e8076">AILF / WORKFLOW EDITOR</text>
+<text x="70" y="134" font-size="36" font-weight="700">编辑的是业务图，保存的是一致的配置</text>
+<text x="70" y="174" font-size="19" fill="#6a7e76">业务字段与画布坐标分开维护，保存时合并</text>
+<g stroke="#c8d8d0" fill="#fff"><rect x="70" y="245" width="330" height="130" rx="18"/><rect x="535" y="245" width="370" height="130" rx="18"/><rect x="1040" y="245" width="330" height="130" rx="18"/><rect x="535" y="440" width="370" height="130" rx="18"/></g>
+<g font-size="24" font-weight="600"><text x="98" y="293">节点、连线与条件编辑</text><text x="565" y="293">权威节点状态</text><text x="1068" y="293">保存快照</text><text x="565" y="488">Butterfly 画布</text></g>
+<g font-size="18" fill="#678077"><text x="98" y="334">删除同步清理父子关系</text><text x="565" y="334">名称 / 参数 / 输出 / 转移关系</text><text x="1068" y="334">只合并实时位置</text><text x="565" y="529">拖动 / 缩放 / 平移 / 显示</text></g>
+<g fill="none" stroke="#527c73" stroke-width="3" marker-end="url(#arrow)"><path d="M410 310H521"/><path d="M915 310H1026"/><path d="M720 385V426"/><path d="M915 505H1205V389"/><path d="M1205 389V625H400"/></g>
+<text x="126" y="630" font-size="22" font-weight="600">onSave</text><text x="305" y="681" font-size="21">nodes + node_relationships → 完整应用配置 API</text>
+<text x="70" y="725" font-size="15" fill="#7c8d84">在线体验保存到页面内存；后端执行器的上下文字段、分支和接口行为需另外验收。</text>
+</g></svg>

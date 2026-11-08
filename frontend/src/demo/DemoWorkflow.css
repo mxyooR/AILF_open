@@ -1,0 +1,20 @@
+.demo-workflow { background: #fff; border: 1px solid #d6ded7; border-radius: 12px; overflow: hidden; }
+.demo-workflow-toolbar { padding: 20px 24px; border-bottom: 1px solid #e8ede7; display: flex; gap: 20px; align-items: center; justify-content: space-between; }
+.demo-workflow-toolbar strong { font-size: 16px; display: block; margin-bottom: 6px; }
+.demo-workflow-toolbar span { color: #728173; font-size: 11px; }
+.demo-workflow-toolbar > div:last-child { display: flex; gap: 8px; flex-wrap: wrap; }
+.demo-workflow-toolbar button, .demo-workflow-status button { background: #f2f5f0; border: 1px solid #d6ded7; color: #365b47; border-radius: 5px; padding: 7px 10px; font-size: 11px; }
+.demo-workflow .workflow-sidebar { width: 220px; gap: 10px; }
+.demo-workflow .workflow-actions { padding: 12px; background: #f2f5f0; }
+.demo-workflow .workflow-actions .ant-btn-primary { background: #244d40; border-color: #244d40; box-shadow: none; font-size: 12px; height: 36px; }
+.demo-workflow .palette-card { box-shadow: 0 3px 14px #243d2808; }
+.demo-workflow .palette-card .ant-card-head { background: #f7f9f6; }
+.demo-workflow .node-palette-item { border-width: 1px; background: #fff; border-radius: 8px; }
+.demo-workflow .workflow-canvas { background-color: #fafcf9; background-image: radial-gradient(#cdd8ce 1px, transparent 1px); background-size: 20px 20px; }
+.demo-workflow-status { padding: 16px 24px; display: flex; align-items: center; gap: 16px; justify-content: space-between; color: #6b7f6d; font-size: 12px; border-top: 1px solid #e8ede7; }
+.demo-workflow-status button { flex-shrink: 0; }
+@media (max-width: 768px) {
+  .demo-workflow-toolbar { flex-direction: column; align-items: flex-start; padding: 16px; gap: 12px; }
+  .demo-workflow .workflow-sidebar { width: 100%; }
+  .demo-workflow-status { padding: 16px; flex-direction: column; align-items: flex-start; }
+}

@@ -8,13 +8,14 @@ class WorkflowButterflyEdge extends Edge {
 
   _dispatchEdgeEvent(eventName) {
     const edgeEvent = new CustomEvent(eventName, {
+      bubbles: true,
       detail: {
         edgeId: this.id,
-        sourceNode: this.options?.sourceNode,
-        targetNode: this.options?.targetNode
+        sourceNode: this.sourceNode?.id || this.options?.sourceNode,
+        targetNode: this.targetNode?.id || this.options?.targetNode
       }
     });
-    document.dispatchEvent(edgeEvent);
+    this.dom?.dispatchEvent(edgeEvent);
   }
 
   draw(obj) {
@@ -42,6 +43,7 @@ class WorkflowButterflyEdge extends Edge {
       // 添加双击删除事件
       path.addEventListener('dblclick', (e) => {
         e.stopPropagation();
+        if (path.closest('.workflow-canvas.readonly')) return;
         if (window.confirm('确定要删除这条连线吗？')) {
           this._dispatchEdgeEvent('edge-delete');
         }
@@ -76,6 +78,8 @@ class WorkflowButterflyEdge extends Edge {
       label.style.borderRadius = '4px';
       label.style.padding = '2px 6px';
       label.style.fontSize = '12px';
+      label.style.whiteSpace = 'nowrap';
+      label.style.width = 'max-content';
       label.style.color = '#666';
       label.style.pointerEvents = 'auto';
       label.style.cursor = 'pointer';
@@ -90,6 +94,7 @@ class WorkflowButterflyEdge extends Edge {
       // 双击标签快速删除连线。
       label.addEventListener('dblclick', (e) => {
         e.stopPropagation();
+        if (label.closest('.workflow-canvas.readonly')) return;
         if (window.confirm('确定要删除这条连线吗？')) {
           this._dispatchEdgeEvent('edge-delete');
         }

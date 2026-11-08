@@ -22,10 +22,39 @@
 /* 左侧工具区域 */
 .workflow-sidebar {
   width: 280px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+
+.workflow-editor-help { color: #6b7280; font-size: 12px; line-height: 1.7; margin: 0 12px; }
+.workflow-canvas.readonly .node-delete-btn { display: none !important; }
+.workflow-canvas .butterflie-circle-endpoint { width: 12px; height: 12px; background: #fff; border: 2px solid #70aee8; box-shadow: 0 0 0 3px #1890ff0d; cursor: crosshair; }
+.workflow-canvas-stage { flex: 1; min-width: 0; position: relative; }
+.workflow-viewport-tools { position: absolute; top: 12px; right: 12px; z-index: 5; display: flex; gap: 5px; }
+
+.workflow-butterfly-node { position: absolute; width: 164px; height: 110px; cursor: grab; color: #253a40; user-select: none; box-sizing: border-box; }
+.workflow-butterfly-node:active { cursor: grabbing; }
+.workflow-butterfly-node .workflow-node-shape { position: absolute; inset: 0; border: 1.5px solid var(--node-color); border-radius: 14px; background: var(--node-background); box-shadow: 0 5px 16px #1b35400b; pointer-events: none; }
+.workflow-butterfly-node .workflow-node-content { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 12px; pointer-events: none; }
+.workflow-butterfly-node .workflow-node-symbol { color: var(--node-color); width: 24px; height: 24px; line-height: 0; }
+.workflow-butterfly-node .workflow-node-symbol svg { width: 100%; height: 100%; }
+.workflow-butterfly-node .node-label { max-width: 100%; font-size: 13px; font-weight: 600; line-height: 1.4; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.workflow-butterfly-node .workflow-node-caption { color: var(--node-color); font-size: 8px; font-weight: 600; letter-spacing: 1.25px; line-height: 1; }
+.workflow-butterfly-node.is-start, .workflow-butterfly-node.is-end { width: 104px; height: 104px; }
+.workflow-butterfly-node.is-start .workflow-node-shape, .workflow-butterfly-node.is-end .workflow-node-shape { border-radius: 50%; border-width: 2px; }
+.workflow-butterfly-node.is-start .node-label, .workflow-butterfly-node.is-end .node-label { font-size: 12px; }
+.workflow-butterfly-node.is-condition { width: 128px; height: 128px; }
+.workflow-butterfly-node.is-condition .workflow-node-shape { inset: 18px; border-radius: 13px; transform: rotate(45deg); }
+.workflow-butterfly-node.is-condition .workflow-node-content { padding: 20px 12px; gap: 5px; }
+.workflow-butterfly-node.is-condition .workflow-node-caption { font-size: 7px; letter-spacing: .6px; }
+.workflow-butterfly-node.is-api_call .workflow-node-shape { border: 0; background: var(--node-color); border-radius: 0; clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%); }
+.workflow-butterfly-node.is-api_call .workflow-node-shape::after { content: ''; position: absolute; inset: 1.5px; background: var(--node-background); clip-path: inherit; }
+.workflow-butterfly-node .node-delete-btn { display: none; position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; align-items: center; justify-content: center; border: 1px solid #e8c6c6; background: #fff; border-radius: 50%; color: #b54848; cursor: pointer; z-index: 1000; font-size: 18px; line-height: 1; box-shadow: 0 2px 8px #5b233318; }
+.workflow-butterfly-node:hover .node-delete-btn, .workflow-butterfly-node:focus-within .node-delete-btn { display: flex; }
+.workflow-butterfly-node:focus-visible { outline: 2px solid #3a8e89; outline-offset: 6px; border-radius: 14px; }
+.workflow-butterfly-node:hover .workflow-node-shape { filter: brightness(.985); }
 
 /* 工作流操作按钮区域 */
 .workflow-actions {
@@ -59,6 +88,7 @@
   overflow: hidden;
   transition: all 0.3s ease;
   min-height: 500px;
+  height: 100%;
 }
 
 .workflow-canvas:hover {
@@ -230,6 +260,10 @@
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .workflow-sidebar { width: 100%; }
+  .workflow-sidebar .node-types-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .workflow-canvas-stage { flex: none; height: 460px; }
+  .workflow-canvas { min-height: 0; }
   .workflow-canvas-container {
     flex-direction: column;
     height: auto;
@@ -285,4 +319,4 @@
 
 .workflow-edge.new {
   animation: edgeDrawing 0.5s ease-out;
-} 
+}

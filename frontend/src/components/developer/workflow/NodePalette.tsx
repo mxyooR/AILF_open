@@ -8,6 +8,7 @@ import { Card, Typography, Button, Space, Tooltip } from 'antd';
 import {
   PlayCircleOutlined,
   ApiOutlined,
+  BranchesOutlined,
   NotificationOutlined,
   StopOutlined,
   DragOutlined,
@@ -40,6 +41,13 @@ const nodeTypeConfigs = [
     description: '调用系统中注册的API（POST请求会自动生成表单）',
   },
   {
+    type: 'condition',
+    label: '条件判断',
+    icon: <BranchesOutlined />,
+    color: '#fa8c16',
+    description: '根据条件决定流程走向',
+  },
+  {
     type: 'notification',
     label: '通知节点',
     icon: <NotificationOutlined />,
@@ -60,6 +68,7 @@ const NodePalette: React.FC<NodePaletteProps> = ({ onNodeDrop, loading, existing
 
   // 检查节点是否被禁用
   const isNodeDisabled = (nodeType: string) => {
+    if (loading) return true;
     // 开始节点和结束节点只能有一个
     if (nodeType === 'start' || nodeType === 'end') {
       return existingNodes.some(node =>
@@ -112,18 +121,29 @@ const NodePalette: React.FC<NodePaletteProps> = ({ onNodeDrop, loading, existing
         <div className="node-types-grid">
           {nodeTypeConfigs.map((config) => {
             const disabled = isNodeDisabled(config.type);
-            const tooltipTitle = disabled
+            const tooltipTitle = loading ? '正在加载工作流'
+              : disabled
               ? `${config.description}（已存在，只能有一个）`
               : config.description;
 
             return (
               <Tooltip key={config.type} title={tooltipTitle} placement="right">
                 <div
+                  role="button"
+                  aria-label={`添加${config.label}`}
+                  aria-disabled={disabled}
+                  tabIndex={disabled ? -1 : 0}
                   className={`node-palette-item ${draggedNode === config.type ? 'dragging' : ''} ${disabled ? 'disabled' : ''}`}
                   draggable={!disabled}
                   onDragStart={(e) => handleDragStart(e, config.type)}
                   onDragEnd={handleDragEnd}
                   onClick={() => handleAddNode(config.type)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleAddNode(config.type);
+                    }
+                  }}
                   style={{
                     borderColor: disabled ? '#d9d9d9' : config.color,
                     opacity: disabled ? 0.5 : 1,
