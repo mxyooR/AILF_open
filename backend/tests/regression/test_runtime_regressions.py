@@ -7,7 +7,7 @@ import json
 import threading
 import time
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from _support import DatabaseTestCase, database, node, session_service, workflow
 from app.services.workflow_execution_service import WorkflowExecutionService
@@ -172,6 +172,24 @@ class RedisSnapshotTests(unittest.TestCase):
         redis.setex(service._session_key(local.user_id), service.ttl, payload)
         listed = service.list_sessions()
         self.assertEqual(listed[0].step_data.get("quantity"), 9)
+
+
+class RedisLockTests(unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_settings_still_acquire_the_shared_lock(self):
+        from types import SimpleNamespace
+        from app.services import workflow_session_service as module
+        redis = MagicMock()
+        remote_lock = redis.lock.return_value
+        remote_lock.acquire.side_effect = [True, False]
+        first, second = redis_session_service(redis), redis_session_service(redis)
+        # 私有旧配置没有异步命令字段，也必须实际申请 Redis 锁。
+        with patch.object(module, "settings", SimpleNamespace()):
+            async with first.execution_lock("lock_user"):
+                with self.assertRaisesRegex(RuntimeError, "正在执行"):
+                    async with second.execution_lock("lock_user"):
+                        self.fail("同一用户的第二个执行者不能进入临界区")
+        self.assertEqual(remote_lock.acquire.call_count, 2)
+        remote_lock.release.assert_called_once()
 
 
 class ExtendedExecutionTests(unittest.IsolatedAsyncioTestCase):

@@ -151,8 +151,11 @@ class DDLPlanningTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("ALTER TABLE" in str(call.args[0]) for call in self.db.execute.call_args_list))
 
     async def test_readding_a_retained_column_applies_its_new_definition(self):
-        from sqlalchemy import String
-        self.inspector.get_columns.return_value = [{"name": "value", "type": String(255), "nullable": True}]
+        from sqlalchemy.dialects.mysql import VARCHAR
+        # MySQL 反射包含继承来的排序规则，类型不应因此被误判为不同。
+        self.inspector.get_columns.return_value = [{
+            "name": "value", "type": VARCHAR(255, charset="utf8mb4", collation="utf8mb4_unicode_ci"), "nullable": True
+        }]
         field = EntityFieldCreateRequest(name="value", displayName="Value", type="text", required=True, defaultValue="restored")
         with patch.object(self.service, "_table_exists", return_value=True), \
              patch("app.services.entity_service.inspect", return_value=self.inspector):

@@ -171,6 +171,8 @@ def sql_type_signature(column_type, dialect):
     """比较保留列与新字段类型，统一 MySQL 反射返回的同义类型名称。"""
     rendered = str(column_type.compile(dialect=dialect)).upper()
     if dialect.name == "mysql":
+        # 反射会带上表继承的字符集与排序规则；配置端没有修改它们，不能误判为数据类型变更。
+        rendered = re.sub(r"\s+(?:CHARACTER SET|COLLATE)\s+\w+", "", rendered)
         rendered = re.sub(r"\bNUMERIC\b", "DECIMAL", rendered)
         rendered = re.sub(r"\b(?:BOOL|BOOLEAN)\b", "TINYINT(1)", rendered)
         rendered = re.sub(r"\b(?:INTEGER|INT)(?:\(\d+\))?", "INTEGER", rendered)

@@ -300,7 +300,8 @@ class WorkflowSessionService:
             if self._redis_enabled and self._redis is not None:
                 try:
                     remote_lock = self._redis.lock(
-                        f"wf:lock:{user_id}", timeout=max(600, settings.AI_COMMAND_TIMEOUT_SECONDS * 2),
+                        # 部分旧部署尚无异步命令超时配置，缺少该配置不能导致跨进程锁被跳过。
+                        f"wf:lock:{user_id}", timeout=max(600, getattr(settings, "AI_COMMAND_TIMEOUT_SECONDS", 540) * 2),
                         thread_local=False,
                     )
                     acquired = await asyncio.to_thread(remote_lock.acquire, blocking=False)
