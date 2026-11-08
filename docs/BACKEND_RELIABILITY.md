@@ -51,4 +51,6 @@ python -m unittest discover -s backend/tests/regression -v
 
 [后端 CI](../.github/workflows/backend-regressions.yml)另提供临时 MySQL 8 和 Redis 7 服务。MySQL 测试只接受 `ailf_regression_` 前缀的本机测试库；Redis 测试只操作随机测试用户和实例键，不使用 `FLUSHDB`。这些服务与业务库分开。
 
+2026-11-08 已执行验证：两个仓库各通过 60 项本地回归，默认跳过 5 项集成测试；使用临时 MySQL 8 与 Redis 7 的 CI 各通过全部 65 项。覆盖服务端默认值、唯一索引、精度变更、保留列重新加入、跨进程锁、快照 TTL、写入失败恢复和 WATCH 并发竞争。
+
 已验证的本地范围包括表单提交到动态 API 的落库链路；模型意图与槽位使用替身，完整 GPU、Celery 作业和真实业务配置仍需单独验收。
