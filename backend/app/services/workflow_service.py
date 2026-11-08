@@ -1,638 +1,461 @@
-"""
-工作流设计模块服务 (简化版)
-实现工作流定义的增删改查功能
-基于API文档，只处理工作流配置，不包含执行功能
-"""
-import json
-from typing import Dict, Any, List, Optional
+"""工作流定义与节点维护，以及基于会话快照的执行实例管理。"""
+from collections import Counter
+from copy import deepcopy
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from typing import Any, Dict, List, Optional
+import json
+import re
+import uuid
 
+from sqlalchemy import func, or_
 from app.core.database import get_db_session
-from app.core.utils import format_datetime, generate_id
 from app.core.logging_config import get_logger
-from app.models.workflow import WorkflowDBModel, WorkflowStatus
+from app.core.utils import format_datetime
+from app.models.workflow import WorkflowDBModel
 from app.schemas.workflow import WorkflowCreateRequest, WorkflowUpdateRequest, WorkflowNodeUpdateRequest
+from app.services.workflow_graph import normalize_nodes, relationships
 
 logger = get_logger(__name__)
 
 
-def normalize_status(status_value):
-    """标准化状态值，将旧的小写值转换为大写"""
-    if isinstance(status_value, str):
-        status_mapping = {
-            'draft': 'DRAFT',
-            'active': 'ACTIVE',
-            'inactive': 'INACTIVE',
-            'archived': 'ARCHIVED'
-        }
-        return status_mapping.get(status_value.lower(), status_value.upper())
-    return status_value
+def normalize_status(value):
+    normalized = str(getattr(value, "value", value) or "DRAFT").strip().upper()
+    if normalized not in {"DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"}:
+        raise ValueError("无效的工作流状态")
+    return normalized
+
+
+def _dump(value):
+    return value.model_dump(mode="json", exclude_none=True) if hasattr(value, "model_dump") else deepcopy(value)
+
+
+def _failure(error, details):
+    return {"success": False, "error": error, "details": str(details)}
 
 
 class WorkflowService:
-    """工作流服务 (简化版)"""
-    
-    def _generate_id(self, name: str = "unnamed") -> str:
-        """直接使用工作流名称作为ID（语义化，与数据集一致）"""
-        return name
-    
+    def __init__(self):
+        self._session_service = None
+
+    @property
+    def sessions(self):
+        if self._session_service is None:
+            from app.services.workflow_session_service import workflow_session_service
+            self._session_service = workflow_session_service
+        return self._session_service
+
+    def _generate_id(self, name="unnamed"):
+        """短名称可作为稳定 ID；长显示名称用 UUID，避免超出数据库主键长度。"""
+        if len(name) <= 50 and re.fullmatch(r"[\w-]+", name):
+            return name
+        return "wf_" + uuid.uuid4().hex
+
     def create_workflow(self, request: WorkflowCreateRequest) -> Dict[str, Any]:
-        """创建工作流定义"""
+        """先检查节点和连线，再以草稿状态保存定义。"""
         try:
-            logger.info(f"开始创建工作流: {request.name}")
-            
+            name = request.name.strip()
+            if not name:
+                raise ValueError("工作流名称不能为空")
+            nodes = normalize_nodes([_dump(item) for item in request.nodes])
             with get_db_session() as db:
-                # 🔥 直接使用 name 作为 workflow_id（语义化）
-                workflow_id = request.name
-                logger.debug(f"工作流ID: {workflow_id}")
-                
-                # 检查是否已存在
-                existing = db.query(WorkflowDBModel).filter(WorkflowDBModel.id == workflow_id).first()
-                if existing:
-                    return {
-                        "success": False,
-                        "error": "workflow_exists",
-                        "details": f"工作流 '{workflow_id}' 已存在"
-                    }
-                
-                # 创建工作流记录
-                db_workflow = WorkflowDBModel(
-                    id=workflow_id,
-                    name=request.name,
-                    description=request.description,
-                    business_scenario=request.business_scenario,
-                    status="DRAFT",
-                    user_intents=request.user_intents or [],
-                    trigger_keywords=request.trigger_keywords or [],
-                    inputs=[input_item.model_dump() if hasattr(input_item, 'model_dump') else input_item for input_item in (request.inputs or [])],
-                    nodes=[node.model_dump() if hasattr(node, 'model_dump') else node for node in (request.nodes or [])],
-                    workflow_metadata=request.metadata.model_dump() if hasattr(request.metadata, 'model_dump') else (request.metadata or {}),
-                    created_by="developer"
+                workflow_id = self._generate_id(name)
+                if db.query(WorkflowDBModel).filter(or_(
+                    WorkflowDBModel.id == workflow_id, WorkflowDBModel.name == name
+                )).first():
+                    return _failure("workflow_exists", "工作流名称已存在")
+                record = WorkflowDBModel(
+                    id=workflow_id, name=name, description=request.description,
+                    business_scenario=request.business_scenario, status="DRAFT",
+                    user_intents=request.user_intents, trigger_keywords=request.trigger_keywords,
+                    inputs=[_dump(item) for item in request.inputs], nodes=nodes,
+                    workflow_metadata=_dump(request.metadata) or {}, created_by="developer",
                 )
-                
-                db.add(db_workflow)
-                db.commit()
-                
-                logger.info(f"✅ 工作流创建成功: {workflow_id}")
-                
-                return {
-                    "success": True,
-                    "data": {
-                        "workflow": {
-                            "id": workflow_id,
-                            "name": request.name,
-                            "status": "DRAFT",
-                            "created_at": format_datetime(datetime.now()),
-                            "node_count": len(request.nodes or []),
-                            "complexity": "medium"
-                        }
-                    }
-                }
-                
-        except Exception as e:
-            logger.error(f"❌ 创建工作流失败: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "creation_failed",
-                "details": f"创建工作流失败: {str(e)}"
-            }
-    
-    def get_workflows_list(self, page: int = 1, limit: int = 50, status: Optional[str] = None,
-                          business_scenario: Optional[str] = None, search: Optional[str] = None,
-                          sort_by: str = "created_at", sort_order: str = "desc") -> Dict[str, Any]:
-        """获取工作流列表"""
+                db.add(record)
+                db.flush()
+                return {"success": True, "data": {"workflow": self._build_workflow_response(record)}}
+        except ValueError as exc:
+            return _failure("validation_failed", exc)
+        except Exception as exc:
+            logger.exception("创建工作流失败")
+            return _failure("creation_failed", exc)
+
+    def get_workflows_list(self, page=1, limit=50, status=None, business_scenario=None,
+                           search=None, sort_by="created_at", sort_order="desc"):
+        """分页读取定义，状态兼容历史大小写，每页只统计一次实例。"""
         try:
-            logger.debug(f"查询工作流列表: page={page}, limit={limit}")
-            
+            if page < 1 or not 1 <= limit <= 100:
+                raise ValueError("无效的分页参数")
             with get_db_session() as db:
-                # 构建查询
                 query = db.query(WorkflowDBModel)
-                
-                # 应用筛选条件
                 if status:
-                    normalized_status = normalize_status(status)
-                    query = query.filter(WorkflowDBModel.status == normalized_status)
+                    query = query.filter(func.upper(WorkflowDBModel.status) == normalize_status(status))
                 if business_scenario:
                     query = query.filter(WorkflowDBModel.business_scenario == business_scenario)
                 if search:
-                    search_pattern = f"%{search}%"
-                    query = query.filter(
-                        or_(
-                            WorkflowDBModel.name.like(search_pattern),
-                            WorkflowDBModel.description.like(search_pattern)
-                        )
-                    )
-                
-                # 计算总数
-                total_count = query.count()
-                logger.debug(f"总工作流数量: {total_count}")
-                
-                # 应用排序
-                if sort_by == "name":
-                    order_column = WorkflowDBModel.name
-                elif sort_by == "updated_at":
-                    order_column = WorkflowDBModel.updated_at
+                    query = query.filter(or_(
+                        WorkflowDBModel.name.like(f"%{search}%"),
+                        WorkflowDBModel.description.like(f"%{search}%"),
+                    ))
+                total = query.count()
+                if sort_by == "node_count":
+                    length = func.json_array_length if db.bind.dialect.name == "sqlite" else func.json_length
+                    column = length(WorkflowDBModel.nodes)
                 else:
-                    order_column = WorkflowDBModel.created_at
-                
-                if sort_order == "asc":
-                    query = query.order_by(order_column.asc())
-                else:
-                    query = query.order_by(order_column.desc())
-                
-                # 应用分页
-                offset = (page - 1) * limit
-
-                # 使用原始SQL查询避免枚举值解析问题
-                try:
-                    workflows = query.offset(offset).limit(limit).all()
-                except Exception as query_error:
-                    logger.warning(f"⚠️ ORM查询失败，尝试原始SQL查询: {query_error}")
-                    # 使用原始SQL查询
-                    from sqlalchemy import text
-                    sql = text("""
-                        SELECT id, name, description, business_scenario, status,
-                               user_intents, trigger_keywords, inputs, nodes,
-                               workflow_metadata, created_by, created_at, updated_at
-                        FROM workflows
-                        ORDER BY created_at DESC
-                        LIMIT :limit OFFSET :offset
-                    """)
-                    result = db.execute(sql, {"limit": limit, "offset": offset})
-                    rows = result.fetchall()
-
-                    # 手动构建工作流对象
-                    workflows = []
-                    for row in rows:
-                        workflow_dict = {
-                            'id': row[0],
-                            'name': row[1],
-                            'description': row[2],
-                            'business_scenario': row[3],
-                            'status': normalize_status(row[4]),  # 标准化状态值
-                            'user_intents': row[5],
-                            'trigger_keywords': row[6],
-                            'inputs': row[7],
-                            'nodes': row[8],
-                            'workflow_metadata': row[9],
-                            'created_by': row[10],
-                            'created_at': row[11],
-                            'updated_at': row[12]
-                        }
-                        workflows.append(type('Workflow', (), workflow_dict)())
-                
-                logger.debug(f"查询到 {len(workflows)} 个工作流")
-                
-                # 构建响应
-                workflow_list = []
-                for workflow in workflows:
-                    try:
-                        node_count = 0
-                        if workflow.nodes:
-                            node_count = len(workflow.nodes)
-
-                        # 标准化状态值
-                        status_value = normalize_status(workflow.status) if workflow.status else "DRAFT"
-
-                        workflow_item = {
-                            "id": workflow.id,
-                            "name": workflow.name,
-                            "description": workflow.description,
-                            "business_scenario": workflow.business_scenario,
-                            "status": status_value,
-                            "node_count": node_count,
-                            "trigger_keywords": workflow.trigger_keywords or [],
-                            "user_intents": workflow.user_intents or [],
-                            "created_at": format_datetime(workflow.created_at),
-                            "updated_at": format_datetime(workflow.updated_at)
-                        }
-                        workflow_list.append(workflow_item)
-                    except Exception as item_error:
-                        logger.warning(f"⚠️ 跳过有问题的工作流记录 {workflow.id}: {item_error}")
-                        continue
-                
-                # 计算分页信息
-                total_pages = (total_count + limit - 1) // limit
-                
-                pagination = {
-                    "current_page": page,
-                    "per_page": limit,
-                    "total_count": total_count,
-                    "total_pages": total_pages,
-                    "has_next": page < total_pages,
-                    "has_prev": page > 1
-                }
-                
-                return {
-                    "success": True,
-                    "data": {
-                        "workflows": workflow_list,
-                        "pagination": pagination
-                    }
-                }
-                
-        except Exception as e:
-            logger.error(f"❌ 查询工作流列表失败: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "query_failed",
-                "details": f"查询工作流列表失败: {str(e)}"
-            }
-    
-    def get_workflow_detail(self, workflow_id: str) -> Dict[str, Any]:
-        """获取工作流详情"""
-        try:
-            with get_db_session() as db:
-                # 查询工作流
-                logger.debug(f"查询工作流详情: {workflow_id}")
-                db_workflow = db.query(WorkflowDBModel).filter(WorkflowDBModel.id == workflow_id).first()
-
-                if not db_workflow:
-                    logger.warning(f"⚠️ 工作流不存在: {workflow_id}")
-                    return {
-                        "success": False,
-                        "error": "workflow_not_found",
-                        "details": "工作流不存在"
-                    }
-
-                logger.debug(f"找到工作流: {db_workflow.name}")
-                logger.debug(f"工作流状态: {db_workflow.status}")
-                
-                # 计算节点数量
-                node_count = 0
-                if db_workflow.nodes:
-                    node_count = len(db_workflow.nodes)
-                logger.debug(f"节点数量: {node_count}")
-
-                # 构建响应
-                logger.debug("开始构建工作流响应...")
-                workflow = self._build_workflow_response(db_workflow)
-                logger.debug("工作流响应构建成功")
-
-                return {
-                    "success": True,
-                    "data": {"workflow": workflow}
-                }
-
-        except Exception as e:
-            import traceback
-            logger.error(f"❌ 查询工作流详情失败: {str(e)}")
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "query_failed",
-                "details": f"查询工作流详情失败: {str(e)}"
-            }
-    
-    def update_workflow(self, workflow_id: str, request: WorkflowUpdateRequest) -> Dict[str, Any]:
-        """更新工作流定义"""
-        try:
-            with get_db_session() as db:
-                # 查询工作流
-                db_workflow = db.query(WorkflowDBModel).filter(WorkflowDBModel.id == workflow_id).first()
-                
-                if not db_workflow:
-                    return {
-                        "success": False,
-                        "error": "workflow_not_found",
-                        "details": "工作流不存在"
-                    }
-                
-                # 更新基本信息
-                if request.name is not None:
-                    db_workflow.name = request.name
-                if request.description is not None:
-                    db_workflow.description = request.description
-                if request.business_scenario is not None:
-                    db_workflow.business_scenario = request.business_scenario
-                if request.status is not None:
-                    db_workflow.status = request.status
-                if request.user_intents is not None:
-                    db_workflow.user_intents = request.user_intents
-                if request.trigger_keywords is not None:
-                    db_workflow.trigger_keywords = request.trigger_keywords
-                if request.inputs is not None:
-                    db_workflow.inputs = [input_item.model_dump() if hasattr(input_item, 'model_dump') else input_item for input_item in request.inputs]
-                if request.nodes is not None:
-                    import sys
-                    logger.debug(f"[BACKEND UPDATE] 接收到节点数据，节点数: {len(request.nodes)}")
-                    sys.stdout.flush()
-
-                    # 详细检查每个节点的连线关系
-                    processed_nodes = []
-                    for i, node in enumerate(request.nodes):
-                        node_data = node.model_dump() if hasattr(node, 'model_dump') else node
-                        logger.debug(f"[BACKEND UPDATE] 处理节点{i+1}: {node_data.get('name', 'Unknown')} ({node_data.get('id', 'Unknown')})")
-                        child_nodes = node_data.get('child_nodes', [])
-                        parent_nodes = node_data.get('parent_nodes', [])
-                        logger.debug(f"   [BACKEND UPDATE] child_nodes: {len(child_nodes)} 个 - {child_nodes}")
-                        logger.debug(f"   [BACKEND UPDATE] parent_nodes: {len(parent_nodes)} 个 - {parent_nodes}")
-                        processed_nodes.append(node_data)
-                        sys.stdout.flush()
-
-                    db_workflow.nodes = processed_nodes
-                    logger.debug(f"[BACKEND UPDATE] 节点数据已保存到数据库")
-                    sys.stdout.flush()
-                if request.metadata is not None:
-                    db_workflow.workflow_metadata = request.metadata.model_dump() if hasattr(request.metadata, 'model_dump') else request.metadata
-                
-                db.commit()
-                
-                return {
-                    "success": True,
-                    "data": {
-                        "workflow": {
-                            "id": workflow_id,
-                            "name": db_workflow.name,
-                            "status": db_workflow.status,
-                            "updated_at": format_datetime(db_workflow.updated_at),
-                            "node_count": len(db_workflow.nodes or [])
-                        }
-                    }
-                }
-                
-        except Exception as e:
-            logger.error(f"❌ 更新工作流失败: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "update_failed",
-                "details": f"更新工作流失败: {str(e)}"
-            }
-
-    def update_workflow_node(self, workflow_id: str, node_id: str, request: WorkflowNodeUpdateRequest) -> Dict[str, Any]:
-        """更新工作流中的单个节点。"""
-        try:
-            with get_db_session() as db:
-                db_workflow = db.query(WorkflowDBModel).filter(WorkflowDBModel.id == workflow_id).first()
-
-                if not db_workflow:
-                    return {
-                        "success": False,
-                        "error": "workflow_not_found",
-                        "details": "工作流不存在"
-                    }
-
-                nodes = db_workflow.nodes or []
-                if not isinstance(nodes, list):
-                    nodes = list(nodes) if nodes else []
-                else:
-                    nodes = list(nodes)
-
-                target_index = None
-                for idx, node in enumerate(nodes):
-                    node_data = node.model_dump() if hasattr(node, "model_dump") else node
-                    if isinstance(node_data, dict) and node_data.get("id") == node_id:
-                        target_index = idx
-                        break
-
-                if target_index is None:
-                    return {
-                        "success": False,
-                        "error": "node_not_found",
-                        "details": "节点不存在"
-                    }
-
-                if hasattr(request, "model_dump"):
-                    update_data = request.model_dump(exclude_none=True)
-                else:
-                    update_data = {k: v for k, v in request.__dict__.items() if v is not None}
-
-                def _normalize_value(value: Any) -> Any:
-                    if hasattr(value, "model_dump"):
-                        return value.model_dump()
-                    if isinstance(value, list):
-                        return [
-                            item.model_dump() if hasattr(item, "model_dump") else item
-                            for item in value
-                        ]
-                    return value
-
-                normalized_updates = {k: _normalize_value(v) for k, v in update_data.items()}
-
-                target_node = nodes[target_index]
-                if hasattr(target_node, "model_dump"):
-                    target_node = target_node.model_dump()
-                if not isinstance(target_node, dict):
-                    target_node = {"id": node_id}
-
-                target_node.update(normalized_updates)
-                nodes[target_index] = target_node
-                db_workflow.nodes = nodes
-                try:
-                    from sqlalchemy.orm.attributes import flag_modified
-                    flag_modified(db_workflow, "nodes")
-                except Exception:
-                    pass
-                db.commit()
-
-                return {
-                    "success": True,
-                    "data": {
-                        "workflow_id": workflow_id,
-                        "node": target_node
-                    }
-                }
-
-        except Exception as e:
-            logger.error(f"❌ 更新节点失败: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "update_failed",
-                "details": f"更新节点失败: {str(e)}"
-            }
-    
-    def delete_workflow(self, workflow_id: str, force: bool = False) -> Dict[str, Any]:
-        """删除工作流定义"""
-        try:
-            logger.info(f"开始删除工作流: {workflow_id}, force={force}")
-
-            with get_db_session() as db:
-                # 查询工作流
-                logger.debug(f"查询工作流: {workflow_id}")
-                db_workflow = db.query(WorkflowDBModel).filter(WorkflowDBModel.id == workflow_id).first()
-
-                if not db_workflow:
-                    logger.warning(f"⚠️ 工作流不存在: {workflow_id}")
-                    return {
-                        "success": False,
-                        "error": "workflow_not_found",
-                        "details": "工作流不存在"
-                    }
-
-                logger.debug(f"找到工作流: {db_workflow.name}")
-
-                # 工作流不执行，直接删除（无需检查实例）
-                logger.debug("工作流只是配置，无需检查运行实例...")
-
-                # 删除工作流
-                workflow_name = db_workflow.name
-                logger.info(f"开始删除工作流: {workflow_name}")
-
-                db.delete(db_workflow)
-                logger.debug("提交数据库事务...")
-                db.commit()
-                logger.info(f"✅ 工作流删除成功")
-
-                return {
-                    "success": True,
-                    "data": {
-                        "deleted_workflow_id": workflow_id,
-                        "deleted_nodes_count": len(db_workflow.nodes or [])
-                    }
-                }
-
-        except Exception as e:
-            logger.error(f"❌ 删除工作流异常: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
-            return {
-                "success": False,
-                "error": "deletion_failed",
-                "details": f"删除工作流失败: {str(e)}"
-            }
-    
-    def _build_workflow_response(self, db_workflow: WorkflowDBModel) -> Dict[str, Any]:
-        """构建工作流响应对象，完全按照API文档定义"""
-        logger.debug(f"构建工作流响应: {db_workflow.id}")
-
-        # 从JSON字段获取节点信息
-        nodes = db_workflow.nodes or []
-        import sys
-        logger.debug(f"[BACKEND LOAD] 从数据库加载 {len(nodes)} 个节点")
-
-        # 详细检查每个节点的连线关系
-        for i, node in enumerate(nodes):
-            logger.debug(f"[BACKEND LOAD] 节点{i+1}: {node.get('name', 'Unknown')} ({node.get('id', 'Unknown')})")
-            child_nodes = node.get('child_nodes', [])
-            parent_nodes = node.get('parent_nodes', [])
-            logger.debug(f"   [BACKEND LOAD] child_nodes: {len(child_nodes)} 个 - {child_nodes}")
-            logger.debug(f"   [BACKEND LOAD] parent_nodes: {len(parent_nodes)} 个 - {parent_nodes}")
-        sys.stdout.flush()
-
-        # 安全地获取状态值，处理字符串状态
-        raw_status = str(db_workflow.status) if db_workflow.status else "DRAFT"
-        status_mapping = {
-            'draft': 'DRAFT',
-            'active': 'ACTIVE',
-            'inactive': 'INACTIVE',
-            'archived': 'ARCHIVED'
-        }
-        status_value = status_mapping.get(raw_status.lower(), raw_status.upper())
-
-        # 🔥 构建 node_relationships（从节点的 parent_nodes 和 child_nodes 提取）
-        node_relationships = {}
-        for node in nodes:
-            node_id = node.get('id', '')
-            if node_id:
-                # 提取子节点 ID 列表
-                children = []
-                child_nodes = node.get('child_nodes', [])
-                for child in child_nodes:
-                    if isinstance(child, dict):
-                        children.append(child.get('node_id', ''))
-                    elif isinstance(child, str):
-                        children.append(child)
-                
-                # 提取父节点 ID 列表
-                parents = node.get('parent_nodes', [])
-                if not isinstance(parents, list):
-                    parents = [parents] if parents else []
-                
-                # 提取条件列表
-                conditions = []
-                for child in child_nodes:
-                    if isinstance(child, dict) and 'condition' in child:
-                        conditions.append(child['condition'])
-                
-                node_relationships[node_id] = {
-                    "children": children,
-                    "parents": parents,
-                    "conditions": conditions
-                }
-
-        # 构建工作流响应数据 (基于API文档)
-        workflow_data = {
-            "id": db_workflow.id,
-            "name": db_workflow.name,
-            "description": db_workflow.description,
-            "business_scenario": db_workflow.business_scenario,
-            "status": status_value,
-            "user_intents": db_workflow.user_intents or [],
-            "trigger_keywords": db_workflow.trigger_keywords or [],
-            "inputs": db_workflow.inputs or [],
-            "nodes": nodes,
-            "node_relationships": node_relationships,  # 🔥 添加节点关系映射
-            "metadata": db_workflow.workflow_metadata or {},
-            "created_at": format_datetime(db_workflow.created_at),
-            "updated_at": format_datetime(db_workflow.updated_at),
-            "created_by": db_workflow.created_by
-        }
-        
-        logger.debug(f"工作流响应构建完成: {workflow_data['name']}, 节点关系: {len(node_relationships)} 个")
-        return workflow_data
-
-
-    def get_active_workflows_for_ai(self) -> List[Dict[str, Any]]:
-        """
-        获取活跃的工作流列表供 AI 图谱使用
-        
-        返回格式与数据集一致：
-        {
-            "workflow_id": "workflow_xxx",
-            "name": "购票流程",
-            "description": "完整的在线购票业务流程",
-            "business_scenario": "railway_ticketing",
-            "user_intents": ["买票", "订火车票"],
-            "inputs": [...],  # 🔥 工作流输入字段定义（包含选项）
-            "nodes": [...]  # 🔥 工作流的所有节点
-        }
-        """
-        try:
-            with get_db_session() as db:
-                query = db.query(WorkflowDBModel).filter(
-                    WorkflowDBModel.status == "ACTIVE"
+                    column = getattr(WorkflowDBModel, sort_by, WorkflowDBModel.created_at)
+                    if sort_by not in {"name", "created_at", "updated_at"}:
+                        column = WorkflowDBModel.created_at
+                query = query.order_by(
+                    column.asc() if sort_order == "asc" else column.desc(), WorkflowDBModel.id
                 )
-                
-                workflows = query.all()
-                
-                result = []
-                for wf in workflows:
-                    # 🔥 直接使用 wf.nodes（JSON 字段），而不是 wf.workflow_data
-                    nodes = wf.nodes or []
-                    inputs = wf.inputs or []  # 🔥 获取工作流输入定义
-                    
-                    result.append({
-                        "workflow_id": wf.id,
-                        "id": wf.id,  # 兼容依赖 workflow.id 的旧逻辑
-                        "name": wf.name,
-                        "description": wf.description or "",
-                        "business_scenario": wf.business_scenario or "",
-                        "user_intents": wf.user_intents or [],
-                        "inputs": inputs,  # 🔥 包含工作流输入字段定义
-                        "nodes": nodes  # 🔥 包含工作流的所有节点
-                    })
-                    
-                    logger.debug(f"工作流 {wf.id} ({wf.name}): {len(nodes)} 个节点")
-                
-                logger.info(f"获取 {len(result)} 个活跃工作流供 AI 使用")
-                return result
-                
-        except Exception as e:
-            logger.error(f"❌ 获取活跃工作流失败: {str(e)}")
-            import traceback
-            logger.debug(f"错误堆栈: {traceback.format_exc()}")
+                records = query.offset((page - 1) * limit).limit(limit).all()
+                # 每页只读取一次实例快照，避免每个工作流都全量扫描 Redis。
+                counts = Counter(item.workflow_id for item in self.sessions.list_sessions()) if records else {}
+                items = [self._build_workflow_response(item, counts) for item in records]
+                pages = (total + limit - 1) // limit
+                return {"success": True, "data": {"workflows": items, "pagination": {
+                    "current_page": page, "per_page": limit, "total_count": total,
+                    "total_pages": pages, "has_next": page < pages, "has_prev": page > 1,
+                }}}
+        except ValueError as exc:
+            return _failure("validation_failed", exc)
+        except Exception as exc:
+            logger.exception("查询工作流列表失败")
+            return _failure("query_failed", exc)
+
+    def get_workflow_detail(self, workflow_id):
+        """返回编辑器需要的完整定义和派生关系。"""
+        try:
+            with get_db_session() as db:
+                record = db.get(WorkflowDBModel, workflow_id)
+                if record is None:
+                    return _failure("workflow_not_found", "工作流不存在")
+                return {"success": True, "data": {"workflow": self._build_workflow_response(record)}}
+        except Exception as exc:
+            logger.exception("查询工作流详情失败")
+            return _failure("query_failed", exc)
+
+    def update_workflow(self, workflow_id, request: WorkflowUpdateRequest):
+        """锁定定义行，先验证整张图再替换，校验失败时旧定义保持有效。"""
+        try:
+            with get_db_session() as db:
+                record = db.query(WorkflowDBModel).filter(
+                    WorkflowDBModel.id == workflow_id
+                ).with_for_update().first()
+                if record is None:
+                    return _failure("workflow_not_found", "工作流不存在")
+                changes = request.model_dump(mode="json", exclude_unset=True)
+                status = normalize_status(changes.get("status") or record.status)
+                nodes = [_dump(item) for item in request.nodes] if request.nodes is not None else record.nodes
+                normalized = normalize_nodes(nodes, executable=status == "ACTIVE")
+                if "name" in changes and changes["name"] is not None:
+                    name = changes["name"].strip()
+                    if not name:
+                        raise ValueError("工作流名称不能为空")
+                    if db.query(WorkflowDBModel).filter(
+                        WorkflowDBModel.name == name, WorkflowDBModel.id != workflow_id
+                    ).first():
+                        return _failure("workflow_exists", "工作流名称已存在")
+                    record.name = name
+                for key in ("description", "business_scenario", "user_intents", "trigger_keywords", "inputs"):
+                    if key in changes:
+                        if changes[key] is None and key not in {"description"}:
+                            raise ValueError(f"{key} 不能为 null")
+                        setattr(record, key, changes[key])
+                record.nodes = normalized
+                record.status = status
+                if "metadata" in changes:
+                    record.workflow_metadata = changes["metadata"] or {}
+                db.flush()
+                return {"success": True, "data": {"workflow": self._build_workflow_response(record)}}
+        except ValueError as exc:
+            return _failure("validation_failed", exc)
+        except Exception as exc:
+            logger.exception("更新工作流失败")
+            return _failure("update_failed", exc)
+
+    def _edit_nodes(self, workflow_id, mutate):
+        """节点增删改共用的事务入口，任何改动都重新校验并重建关系。"""
+        try:
+            with get_db_session() as db:
+                record = db.query(WorkflowDBModel).filter(
+                    WorkflowDBModel.id == workflow_id
+                ).with_for_update().first()
+                if record is None:
+                    return _failure("workflow_not_found", "工作流不存在")
+                nodes = deepcopy(record.nodes or [])
+                outcome = mutate(nodes)
+                if not outcome["success"]:
+                    return outcome
+                record.nodes = normalize_nodes(nodes, executable=normalize_status(record.status) == "ACTIVE")
+                db.flush()
+                return outcome
+        except ValueError as exc:
+            return _failure("validation_failed", exc)
+        except Exception as exc:
+            logger.exception("更新工作流节点失败")
+            return _failure("update_failed", exc)
+
+    def get_workflow_nodes(self, workflow_id):
+        """读取规范化后的节点，供节点管理接口使用。"""
+        result = self.get_workflow_detail(workflow_id)
+        if not result["success"]:
+            return result
+        flow = result["data"]["workflow"]
+        return {"success": True, "data": {
+            "workflow_id": workflow_id, "nodes": flow["nodes"], "node_relationships": flow["node_relationships"],
+        }}
+
+    def add_workflow_node(self, workflow_id, request):
+        """新增节点时拒绝重复 ID，并更新整张图的父子关系。"""
+        def add(nodes):
+            item = _dump(request)
+            if any(node["id"] == item["id"] for node in nodes):
+                return _failure("node_exists", "节点 ID 已存在")
+            nodes.append(item)
+            return {"success": True, "data": {"workflow_id": workflow_id, "node": item}}
+        return self._edit_nodes(workflow_id, add)
+
+    def update_workflow_node(self, workflow_id, node_id, request: WorkflowNodeUpdateRequest):
+        """保留节点 ID；同类型节点局部配置更新时保留未修改的键。"""
+        def update(nodes):
+            target = next((node for node in nodes if node["id"] == node_id), None)
+            if target is None:
+                return _failure("node_not_found", "节点不存在")
+            changes = request.model_dump(mode="json", exclude_unset=True)
+            if "id" in changes and changes["id"] != node_id:
+                return _failure("validation_failed", "节点 ID 不可修改")
+            same_type = changes.get("type", target.get("type")) == target.get("type")
+            for key in ("config", "ai_instructions"):
+                if same_type and isinstance(changes.get(key), dict):
+                    changes[key] = {**(target.get(key) or {}), **changes[key]}
+            target.update(changes)
+            target["id"] = node_id
+            return {"success": True, "data": {"workflow_id": workflow_id, "node": target}}
+        return self._edit_nodes(workflow_id, update)
+
+    def delete_workflow_node(self, workflow_id, node_id):
+        """删除节点时同步清理所有指向它的出边。"""
+        def delete(nodes):
+            if not any(node["id"] == node_id for node in nodes):
+                return _failure("node_not_found", "节点不存在")
+            nodes[:] = [node for node in nodes if node["id"] != node_id]
+            for node in nodes:
+                node["child_nodes"] = [
+                    edge for edge in node.get("child_nodes") or []
+                    if (edge if isinstance(edge, str) else edge.get("node_id")) != node_id
+                ]
+                if "nextSteps" in node:
+                    node["nextSteps"] = [item for item in node["nextSteps"] if item != node_id]
+            return {"success": True, "data": {"workflow_id": workflow_id, "deleted_node_id": node_id}}
+        return self._edit_nodes(workflow_id, delete)
+
+    def delete_workflow(self, workflow_id, force=False):
+        """有运行实例时拒绝普通删除；显式 force 时取消实例后删除定义。"""
+        try:
+            with get_db_session() as db:
+                record = db.get(WorkflowDBModel, workflow_id)
+                if record is None:
+                    return _failure("workflow_not_found", "工作流不存在")
+                active = [item for item in self.sessions.list_sessions()
+                          if item.workflow_id == workflow_id and item.status == "active"]
+                if active and not force:
+                    return _failure("has_running_instances", "工作流有正在运行的实例")
+                for session in active:
+                    self.sessions.end_session(session.user_id, "cancelled")
+                count = len(record.nodes or [])
+                db.delete(record)
+                db.flush()
+                return {"success": True, "data": {
+                    "deleted_workflow_id": workflow_id, "deleted_nodes_count": count,
+                }}
+        except Exception as exc:
+            logger.exception("删除工作流失败")
+            return _failure("deletion_failed", exc)
+
+    def _build_workflow_response(self, record, instance_counts=None):
+        """兼容可修复的旧配置，并输出图关系、统计和校验提示。"""
+        nodes = record.nodes or []
+        if isinstance(nodes, str):
+            nodes = json.loads(nodes)
+        warnings = []
+        try:
+            nodes = normalize_nodes(nodes)
+        except ValueError as exc:
+            # 旧配置即使连线有误也尽量返回，便于从编辑器打开并修复。
+            warnings.append(str(exc))
+            nodes = deepcopy(nodes)
+            for item in nodes:
+                item["child_nodes"] = [
+                    {"node_id": edge, "condition": None} if isinstance(edge, str) else edge
+                    for edge in item.get("child_nodes") or []
+                ]
+        metadata = record.workflow_metadata or {}
+        return {
+            "id": record.id, "name": record.name, "description": record.description,
+            "business_scenario": record.business_scenario, "status": normalize_status(record.status),
+            "user_intents": record.user_intents or [], "trigger_keywords": record.trigger_keywords or [],
+            "inputs": record.inputs or [], "nodes": nodes, "node_relationships": relationships(nodes),
+            "metadata": metadata, "version": metadata.get("version", "1.0.0"), "node_count": len(nodes),
+            "instance_count": (instance_counts.get(record.id, 0) if instance_counts is not None else
+                               sum(item.workflow_id == record.id for item in self.sessions.list_sessions())),
+            "created_at": format_datetime(record.created_at), "updated_at": format_datetime(record.updated_at),
+            "created_by": record.created_by, "validation_errors": warnings,
+        }
+
+    def get_active_workflows_for_ai(self):
+        """AI 检索只读取已启用的定义，避免分页和 Redis 实例统计拖慢召回。"""
+        # AI 只需要定义，不读取实例统计，也不受编辑器分页大小限制。
+        try:
+            with get_db_session() as db:
+                records = db.query(WorkflowDBModel).filter(
+                    func.upper(WorkflowDBModel.status) == "ACTIVE"
+                ).order_by(WorkflowDBModel.id).all()
+                return [{
+                    "workflow_id": item.id, "id": item.id, "name": item.name,
+                    "description": item.description or "", "business_scenario": item.business_scenario or "",
+                    "user_intents": item.user_intents or [], "inputs": item.inputs or [], "nodes": item.nodes or [],
+                } for item in records]
+        except Exception:
+            logger.exception("查询活跃工作流失败")
             return []
 
+    def get_workflows_for_amis(self):
+        """返回已启用工作流及 AMIS 下拉选项。"""
+        flows = self.get_active_workflows_for_ai()
+        return {"success": True, "data": {
+            "workflows": flows, "options": [{"label": flow["name"], "value": flow["id"]} for flow in flows],
+        }}
 
-# 创建全局实例
+    def get_amis_configuration_info(self):
+        """提供表单配置需要的 API、工作流和数量摘要。"""
+        from app.services.api_route_service import api_route_service
+        routes = api_route_service.get_all_routes()
+        flows = self.get_active_workflows_for_ai()
+        return {"success": True, "data": {
+            "apis": routes, "workflows": flows,
+            "summary": {"api_count": len(routes), "workflow_count": len(flows)},
+        }}
+
+    @staticmethod
+    def _instance_response(session):
+        """把有期限的会话快照转换为实例展示数据；分支结束时完成度为 100%。"""
+        steps = [item["id"] for item in session.workflow_data.get("nodes", [])
+                 if item.get("type") not in {"start", "end"}]
+        completed = len(set(steps) & set(session.completed_steps))
+        public_data = {key: value for key, value in session.step_data.items() if not key.startswith("__")}
+        return {
+            "id": session.id, "workflow_id": session.workflow_id,
+            "workflow_name": session.workflow_data.get("name", session.workflow_id),
+            "status": "waiting" if session.status == "active" else session.status,
+            "current_step": session.current_step if session.status == "active" else None,
+            "progress": {"completed_steps": completed, "total_steps": len(steps),
+                         "percentage": (100 if session.status == "completed" or not steps else
+                                        round(100 * completed / len(steps), 2))},
+            "input_data": session.input_data, "context": public_data,
+            "output_data": public_data if session.status == "completed" else None,
+            "started_by": session.user_id, "priority": session.priority,
+            "started_at": format_datetime(session.created_at), "updated_at": format_datetime(session.updated_at),
+            "completed_at": format_datetime(session.updated_at) if session.status != "active" else None,
+            "execution_history": deepcopy(session.execution_history),
+        }
+
+    def get_workflow_instances(self, workflow_id=None, status=None, user_id=None, page=1, limit=20, sort="created_at"):
+        """按工作流、用户和状态过滤快照，再分页返回。"""
+        sessions = self.sessions.list_sessions()
+        items = [self._instance_response(item) for item in sessions
+                 if (workflow_id is None or item.workflow_id == workflow_id)
+                 and (user_id is None or str(item.user_id) == str(user_id))]
+        if status:
+            wanted = "waiting" if status in {"active", "running"} else status
+            items = [item for item in items if item["status"] == wanted]
+        key = sort.lstrip("-")
+        key = key if key in {"started_at", "updated_at", "status"} else "started_at"
+        items.sort(key=lambda item: item.get(key) or "", reverse=True)
+        total = len(items)
+        return {"success": True, "data": {
+            "instances": items[(page - 1) * limit:page * limit],
+            "pagination": {"current_page": page, "per_page": limit, "total_count": total,
+                           "total_pages": (total + limit - 1) // limit},
+        }}
+
+    def get_workflow_instance_detail(self, instance_id):
+        """读取指定实例；TTL 过期后明确返回不存在。"""
+        session = self.sessions.get_instance(instance_id)
+        if session is None:
+            return _failure("instance_not_found", "工作流实例不存在或已过期")
+        return {"success": True, "data": {"instance": self._instance_response(session)}}
+
+    async def execute_workflow(self, workflow_id, request, started_by):
+        """创建新实例并进入实际开始节点，自动步骤推进到等待表单或结束。"""
+        from app.services.workflow_execution_service import workflow_execution_service
+        detail = self.get_workflow_detail(workflow_id)
+        if not detail["success"]:
+            return detail
+        flow = detail["data"]["workflow"]
+        if normalize_status(flow["status"]) != "ACTIVE":
+            return _failure("workflow_inactive", "请先启用工作流")
+        try:
+            flow["nodes"] = normalize_nodes(flow["nodes"], executable=True)
+        except ValueError as exc:
+            return _failure("no_start_step", exc)
+        try:
+            # 会话重建与旧表单的执行互斥；后续执行再次校验实例 ID。
+            async with self.sessions.execution_lock(started_by):
+                session = self.sessions.create_session(started_by, workflow_id, flow)
+                session.input_data = deepcopy(request.input_data or {})
+                session.priority = request.priority or "normal"
+                session.step_data.update(session.input_data)
+                self.sessions._touch(session)
+                self.sessions._save_session(session)
+        except (ValueError, RuntimeError) as exc:
+            return _failure("execution_failed", exc)
+        context = {**(request.context or {}), "user_id": started_by, "action": "next", "instance_id": session.id}
+        result = await workflow_execution_service.execute_step(
+            started_by, workflow_id, session.current_step, session.input_data, context
+        )
+        if not result.success:
+            return _failure("execution_failed", result.error)
+        return {"success": True, "data": {
+            "instance": self._instance_response(self.sessions.get_instance(session.id)),
+            "amis_schema": result.amis_schema,
+        }}
+
+    async def continue_workflow_instance(self, instance_id, action="continue", data=None, comment="", context=None):
+        """只继续仍属于该用户当前会话的实例，防止旧实例提交到新流程。"""
+        from app.services.workflow_execution_service import workflow_execution_service
+        session = self.sessions.get_instance(instance_id)
+        if session is None:
+            return _failure("instance_not_found", "工作流实例不存在或已过期")
+        active = self.sessions.get_active_session(session.user_id)
+        if session.status != "active" or active is None or active.id != session.id:
+            return _failure("instance_not_waiting", "工作流实例不在等待状态")
+        node = next((item for item in session.workflow_data["nodes"] if item["id"] == session.current_step), {})
+        if action == "continue":
+            action = "submit" if (node.get("config") or {}).get("method", "GET").upper() != "GET" else "next"
+        if action not in {"next", "submit"}:
+            return _failure("validation_failed", "不支持的工作流操作")
+        result = await workflow_execution_service.execute_step(
+            session.user_id, session.workflow_id, session.current_step, data or {},
+            {**(context or {}), "action": action, "user_id": session.user_id, "instance_id": session.id},
+        )
+        if not result.success:
+            return _failure("execution_failed", result.error)
+        return {"success": True, "data": {
+            "instance": self._instance_response(self.sessions.get_instance(session.id)),
+            "amis_schema": result.amis_schema,
+        }}
+
+    def cancel_workflow_instance(self, instance_id, reason="用户取消"):
+        """只取消指定的当前实例，已经结束的实例不能取消后来创建的实例。"""
+        session = self.sessions.get_instance(instance_id)
+        if session is None:
+            return _failure("instance_not_found", "工作流实例不存在或已过期")
+        active = self.sessions.get_active_session(session.user_id)
+        if session.status != "active" or active is None or active.id != instance_id:
+            return _failure("instance_already_finished", "工作流实例已结束")
+        if not self.sessions.end_session(session.user_id, "cancelled"):
+            return _failure("instance_already_finished", "工作流实例已结束")
+        return {"success": True, "data": {"instance": self._instance_response(self.sessions.get_instance(instance_id))}}
+
+
 workflow_service = WorkflowService()

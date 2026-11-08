@@ -5,12 +5,20 @@
 import json
 import time
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from app.core.logging_config import get_logger
 from app.core.utils import generate_id
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc, asc
+from sqlalchemy import and_, or_, desc, asc, case, Column, DateTime, MetaData, String, Table, func, inspect, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.schema import CreateColumn
+from app.services.entity_storage import (
+    decode_record, default_value, field_type, normalize_field_value,
+    serialize_default, sql_default, sql_field_type, sql_type_signature, storage_value,
+)
+import hashlib
+import uuid
 from app.core.database import get_db_session, db_manager
 from app.models.entity import (
     EntityDBModel, EntityFieldDBModel, EntityRelationshipDBModel
@@ -153,7 +161,7 @@ class EntityService:
         }
         
         # 包含字段信息
-        if include_fields and db_entity.fields:
+        if include_fields:
             entity_data["fields"] = [
                 EntityField(
                     id=field.id,
@@ -162,7 +170,7 @@ class EntityService:
                     type=FieldType(field.type),
                     required=field.required,
                     unique=field.unique_field,
-                    defaultValue=field.default_value,
+                    defaultValue=default_value(field),
                     validation=field.validation,
                     options=field.options,
                     aliases=field.aliases or (field.validation.get("aliases") if isinstance(field.validation, dict) else None),
@@ -198,107 +206,57 @@ class EntityService:
         return Entity(**entity_data)
     
     async def create_entity(self, request: EntityCreateRequest) -> Dict[str, Any]:
-        """创建实体"""
+        table_created = False
+        table_name = f"entity_{self._safe_table_name(request.name)}"
         try:
             with get_db_session() as db:
-                logger.debug(f"[EntityService] create_entity 参数:")
-                logger.debug(f"  - entity name: {request.name}")
-                logger.debug(f"  - display name: {request.displayName}")
-                
-                # 检查实体名称是否重复
-                existing_entity = db.query(EntityDBModel).filter(
-                    EntityDBModel.name == request.name
-                ).first()
-                
-                if existing_entity:
-                    return {
-                        "success": False,
-                        "error": "duplicate_entity_name",
-                        "details": "实体名称已存在"
-                    }
-                
-                # 创建实体
+                if db.query(EntityDBModel).filter(EntityDBModel.name == request.name).first():
+                    return {"success": False, "error": "duplicate_entity_name", "details": "实体名称已存在"}
+                if self._table_exists(db, table_name):
+                    raise ValueError("同名实体数据表已存在，请先核对实体配置")
+                # MySQL DDL 会隐式提交；必须先建物理表，再写配置，避免保存出不存在的表。
+                await self._create_entity_database_table(request.name, request.fields, db)
+                table_created = True
                 entity_id = self._generate_id("entity")
-                db_entity = EntityDBModel(
-                    id=entity_id,
-                    name=request.name,
-                    display_name=request.displayName,
-                    description=request.description,
-                    icon=request.icon,
-                    status="active",
-                    is_role=request.isRole or False,
-                    field_count=len(request.fields),
-                    record_count=0
+                record = EntityDBModel(
+                    id=entity_id, name=request.name, display_name=request.displayName,
+                    description=request.description, icon=request.icon, status="active",
+                    is_role=request.isRole or False, field_count=len(request.fields), record_count=0,
                 )
-                
-                db.add(db_entity)
-                db.flush()  # 获取实体ID
-                
-                # 创建字段
-                for i, field_request in enumerate(request.fields):
-                    field_id = self._generate_id("field")
-                    db_field = EntityFieldDBModel(
-                        id=field_id,
-                        entity_id=entity_id,
-                        name=field_request.name,
-                        display_name=field_request.displayName,
-                        type=field_request.type.value,
-                        required=field_request.required,
-                        unique_field=field_request.unique,
-                        default_value=field_request.defaultValue,
-                        validation=field_request.validation.model_dump() if field_request.validation else None,
-                        options=field_request.options,
-                        aliases=field_request.aliases,
-                        sort_order=i
-                    )
-                    db.add(db_field)
-                
-                db.commit()
-                
-                # 自动创建数据库表
-                try:
-                    await self._create_entity_database_table(request.name, request.fields, db)
-                    logger.info(f"✅ 为实体 '{request.displayName}' 自动创建了数据库表")
-                except Exception as table_error:
-                    logger.warning(f"⚠️ 实体 '{request.displayName}' 的数据库表创建失败: {str(table_error)}")
-                    import traceback
-                    logger.debug(f"表创建错误详情: {traceback.format_exc()}")
-                
-                # 重新查询以获取完整信息
-                db_entity = db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).first()
-                entity = self._convert_db_entity_to_schema(db_entity, include_fields=True)
-                
-                # 如果是角色实体，自动创建对应的角色
+                db.add(record)
+                db.flush()
+                for index, field in enumerate(request.fields):
+                    db.add(EntityFieldDBModel(
+                        id=self._generate_id("field"), entity_id=entity_id, name=field.name,
+                        display_name=field.displayName, type=field.type.value,
+                        required=field.required, unique_field=field.unique,
+                        default_value=serialize_default(field.defaultValue),
+                        validation=field.validation.model_dump(exclude_none=True) if field.validation else None,
+                        options=field.options, aliases=field.aliases, sort_order=index,
+                    ))
+                db.flush()
+                entity = self._convert_db_entity_to_schema(record, include_fields=True)
                 if request.isRole:
-                    try:
-                        from app.services.dynamic_user_service import DynamicUserService
-                        user_service = DynamicUserService()
-                        # 传递当前数据库会话和刚创建的实体
-                        sync_result = user_service.sync_entity_roles(db=db, role_entities=[entity])
-                        if sync_result.get("success") and sync_result.get("created_roles"):
-                            created_roles = sync_result.get("created_roles", [])
-                            logger.info(f"✅ 为角色实体 {request.displayName} 自动创建了 {len(created_roles)} 个角色")
-                            for role in created_roles:
-                                logger.debug(f"  - 创建角色: {role['role_name']} (基于实体: {role['entity_name']})")
-                        else:
-                            logger.warning(f"⚠️ 角色实体 {request.displayName} 未找到需要同步的角色")
-                    except Exception as e:
-                        logger.warning(f"⚠️ 角色实体 {request.displayName} 的角色同步失败: {str(e)}")
-                        import traceback
-                        logger.debug(f"详细错误信息: {traceback.format_exc()}")
-                
-                return {
-                    "success": True,
-                    "data": {"entity": entity}
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": "creation_failed",
-                "details": f"创建实体失败: {str(e)}"
-            }
-    
+                    from app.services.dynamic_user_service import DynamicUserService
+                    DynamicUserService().sync_entity_roles(db=db, role_entities=[entity])
+                self._field_label_cache.clear()
+                self._field_label_cache_ts.clear()
+                return {"success": True, "data": {"entity": entity}}
+        except Exception as exc:
+            if table_created:
+                # 仅清理由本次调用创建、尚无定义和记录的空表，不能误删已有业务数据。
+                try:
+                    with get_db_session() as cleanup_db:
+                        registered = cleanup_db.query(EntityDBModel).filter(EntityDBModel.name == request.name).first()
+                        if registered is None and self._table_exists(cleanup_db, table_name):
+                            count = cleanup_db.execute(text(f"SELECT COUNT(*) FROM `{table_name}`")).scalar()
+                            if count == 0:
+                                Table(table_name, MetaData()).drop(cleanup_db.connection())
+                except Exception:
+                    logger.exception("新实体空表清理失败")
+            logger.exception("创建实体失败")
+            return {"success": False, "error": "creation_failed", "details": f"创建实体失败: {exc}"}
+
     def get_entities_list(self, include_fields: bool = True, status: Optional[str] = None) -> Dict[str, Any]:
         """获取实体列表"""
         try:
@@ -438,163 +396,167 @@ class EntityService:
                 "details": f"查询实体详情失败: {str(e)}"
             }
 
-    async def update_entity(self, entity_id: str, request: EntityUpdateRequest) -> Dict[str, Any]:
-        """更新实体"""
+    async def update_entity(self, entity_id, request: EntityUpdateRequest):
+        """先验证并修改物理表，再保存配置；同名字段保留原 ID，失败时不返回成功。"""
         try:
             with get_db_session() as db:
-                db_entity = db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).first()
-                
-                if not db_entity:
-                    return {
-                        "success": False,
-                        "error": "entity_not_found",
-                        "details": "实体不存在"
-                    }
-                
-                original_name = db_entity.name
-                
-                # 更新基础信息
-                if request.displayName is not None:
-                    db_entity.display_name = request.displayName
-                if request.description is not None:
-                    db_entity.description = request.description
-                if request.icon is not None:
-                    db_entity.icon = request.icon
-                if request.isRole is not None:
-                    db_entity.is_role = request.isRole
-                
-                # 更新字段（如果提供）
+                record = db.query(EntityDBModel).filter(
+                    EntityDBModel.id == entity_id
+                ).with_for_update().first()
+                if record is None:
+                    return {"success": False, "error": "entity_not_found", "details": "实体不存在"}
                 if request.fields is not None:
-                    # 删除现有字段
-                    db.query(EntityFieldDBModel).filter(EntityFieldDBModel.entity_id == entity_id).delete()
-                    
-                    # 创建新字段
-                    for i, field_request in enumerate(request.fields):
-                        field_id = self._generate_id("field")
-                        db_field = EntityFieldDBModel(
-                            id=field_id,
-                            entity_id=entity_id,
-                            name=field_request.name,
-                            display_name=field_request.displayName,
-                            type=field_request.type.value,
-                            required=field_request.required,
-                            unique_field=field_request.unique,
-                            default_value=field_request.defaultValue,
-                            validation=field_request.validation.model_dump() if field_request.validation else None,
-                            options=field_request.options,
-                            aliases=field_request.aliases,
-                            sort_order=i
-                        )
-                        db.add(db_field)
-                    
-                    db_entity.field_count = len(request.fields)
-                
-                db.commit()
+                    # 先校验并变更物理表；DDL 失败时，ORM 中的字段定义仍保持原样。
+                    await self._alter_entity_database_table(record.name, request.fields, db)
+                    current = {field.name.lower(): field for field in record.fields}
+                    retained = set()
+                    for index, field in enumerate(request.fields):
+                        existing = current.get(field.name.lower())
+                        if existing is None:
+                            existing = EntityFieldDBModel(id=self._generate_id("field"), entity_id=entity_id)
+                            db.add(existing)
+                        retained.add(existing.id)
+                        existing.name = field.name
+                        existing.display_name = field.displayName
+                        existing.type = field.type.value
+                        existing.required = field.required
+                        existing.unique_field = field.unique
+                        existing.default_value = serialize_default(field.defaultValue)
+                        existing.validation = field.validation.model_dump(exclude_none=True) if field.validation else None
+                        existing.options = field.options
+                        existing.aliases = field.aliases
+                        existing.sort_order = index
+                    for field in current.values():
+                        if field.id not in retained:
+                            db.delete(field)
+                    record.field_count = len(request.fields)
+                changes = request.model_dump(exclude_unset=True)
+                for key, column in (("displayName", "display_name"), ("description", "description"),
+                                    ("icon", "icon"), ("isRole", "is_role")):
+                    if key in changes:
+                        setattr(record, column, changes[key])
+                db.flush()
+                db.expire(record, ["fields"])
+                entity = self._convert_db_entity_to_schema(record, include_fields=True)
+                self._field_label_cache.clear()
+                self._field_label_cache_ts.clear()
+                return {"success": True, "data": {"entity": entity}}
+        except Exception as exc:
+            logger.exception("更新实体失败")
+            return {"success": False, "error": "update_failed", "details": f"更新实体失败: {exc}"}
 
-                # 更新数据库表结构
-                if request.fields is not None:
-                    try:
-                        await self._alter_entity_database_table(original_name, request.fields, db)
-                        logger.info(f"✅ 尝试为实体 '{db_entity.display_name}' 更新数据库表结构")
-                    except Exception as table_error:
-                        logger.error(f"⚠️ 实体 '{db_entity.display_name}' 的数据库表更新失败: {str(table_error)}")
-                        import traceback
-                        logger.error(f"表更新错误详情: {traceback.format_exc()}")
+    @staticmethod
+    def _table_exists(db, table_name):
+        """通过当前事务的连接检查表是否存在，避免额外连接读取旧结构。"""
+        return inspect(db.connection()).has_table(table_name)
 
-                # 重新查询以获取完整信息
-                db.refresh(db_entity)
-                entity = self._convert_db_entity_to_schema(db_entity, include_fields=True)
-                
-                return {
-                    "success": True,
-                    "data": {"entity": entity}
-                }
-                
-        except Exception as e:
-            logger.error(f"更新实体失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": "update_failed",
-                "details": f"更新实体失败: {str(e)}"
-            }
-    
-    async def _alter_entity_database_table(self, entity_name: str, fields: List, db: Session) -> None:
-        """为实体自动更新MySQL数据库表结构"""
-        from sqlalchemy import text
-        
+    def _column_definition(self, field, dialect, *, unique=False):
+        """建表和改表共用列定义，必填、默认值和类型保持一致。"""
+        name = self._safe_column_name(field.name)
+        default = sql_default(field, dialect)
+        return Column(
+            name, sql_field_type(field), nullable=not field.required,
+            unique=unique, server_default=text(default) if default is not None else None,
+        )
+
+    async def _alter_entity_database_table(self, entity_name, fields, db):
+        """先规划全部 DDL，再统一执行；有记录的列不自动转换或收窄类型。"""
         table_name = f"entity_{self._safe_table_name(entity_name)}"
-        
-        # 1. 获取当前表结构
-        try:
-            get_columns_query = text(f"""
-                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table_name}'
-            """)
-            existing_columns_result = db.execute(get_columns_query).fetchall()
-            existing_columns = {row[0] for row in existing_columns_result}
-        except Exception as e:
-            logger.error(f"无法获取表 '{table_name}' 的结构: {e}")
+        if not self._table_exists(db, table_name):
+            await self._create_entity_database_table(entity_name, fields, db)
             return
-
-        # 2. 找出需要添加的新字段
-        desired_fields = {self._safe_column_name(field.name) for field in fields}
-        fields_to_add = desired_fields - existing_columns
-        
-        if not fields_to_add:
-            logger.info(f"表 {table_name} 结构已是最新，无需更新。")
-            return
-
-        # 3. 构建并执行 ALTER TABLE 语句
+        inspector = inspect(db.connection())
+        columns = {column["name"].lower(): column for column in inspector.get_columns(table_name)}
+        definition = db.query(EntityDBModel).filter(EntityDBModel.name == entity_name).first()
+        previous = {field.name.lower(): field for field in definition.fields} if definition else {}
+        count = db.execute(text(f"SELECT COUNT(*) FROM `{table_name}`")).scalar()
+        dialect = db.bind.dialect
+        changes = []
+        # MySQL 会在两个接口中返回同一个唯一索引，按名称去重后才能安全删除。
+        indexes = list({item.get("name") or tuple(item.get("column_names") or []): item for item in
+                        inspector.get_indexes(table_name) + inspector.get_unique_constraints(table_name)}.values())
+        requested_names = {field.name.lower() for field in fields}
+        for name, old in previous.items():
+            if name not in requested_names and old.required and not columns.get(name, {}).get("nullable", True):
+                # 移除字段只从定义中隐藏，不删历史数据；释放 NOT NULL 后新记录才能正常创建。
+                if dialect.name == "sqlite":
+                    raise ValueError("SQLite 回归数据库不支持修改已有列的必填约束")
+                from types import SimpleNamespace
+                retained = SimpleNamespace(
+                    name=old.name, type=old.type, required=False, default_value=old.default_value,
+                    validation=old.validation, options=old.options,
+                )
+                changes.append("MODIFY COLUMN " + str(CreateColumn(
+                    self._column_definition(retained, dialect)
+                ).compile(dialect=dialect)))
         for field in fields:
-            field_name = self._safe_column_name(field.name)
-            if field_name not in fields_to_add:
-                continue
-
-            if field.type.value in ['number', 'integer']:
-                sql_type = "DECIMAL(10,2)"
-            elif field.type.value == 'boolean':
-                sql_type = "BOOLEAN"
-            elif field.type.value == 'date':
-                sql_type = "DATE"
-            elif field.type.value == 'datetime':
-                sql_type = "DATETIME"
-            elif field.type.value == 'email':
-                sql_type = "VARCHAR(255)"
-            elif field.type.value == 'phone':
-                sql_type = "VARCHAR(20)"
-            elif field.type.value == 'reference':
-                sql_type = "VARCHAR(36)"
-            elif field.type.value in ['select', 'multiselect', 'text']:
-                sql_type = "TEXT"
-            else:
-                sql_type = "VARCHAR(500)"
-            
-            constraints = []
-            if field.required:
-                constraints.append("NOT NULL")
-            if getattr(field, 'unique', False):
-                constraints.append("UNIQUE")
-            if field.defaultValue:
-                escaped_default = self._escape_sql_literal(field.defaultValue)
-                if sql_type == "TEXT" and field.defaultValue:
-                    sql_type = "VARCHAR(255)"
-                    constraints.append(f"DEFAULT '{escaped_default}'")
-                elif sql_type in ["VARCHAR(500)", "VARCHAR(255)", "VARCHAR(20)"]:
-                    constraints.append(f"DEFAULT '{escaped_default}'")
+            name = self._safe_column_name(field.name)
+            old = previous.get(field.name.lower())
+            new_column = self._column_definition(field, dialect)
+            if name not in columns:
+                if count and field.required and field.defaultValue is None:
+                    raise ValueError(f"已有记录时添加必填字段 {field.name} 需要默认值")
+                changes.append("ADD COLUMN " + str(CreateColumn(new_column).compile(dialect=dialect)))
+            elif old is None:
+                # 已移除字段的物理列仍在，重新加入时必须与真实列核对，不能仅恢复元数据。
+                physical = columns[name]
+                same_type = sql_type_signature(physical["type"], dialect) == sql_type_signature(new_column.type, dialect)
+                if count and not same_type:
+                    raise ValueError(f"字段 {field.name} 已有数据，不能自动转换或收窄类型")
+                if field.required and count:
+                    nulls = db.execute(text(f"SELECT COUNT(*) FROM `{table_name}` WHERE `{name}` IS NULL")).scalar()
+                    if nulls:
+                        raise ValueError(f"字段 {field.name} 存在空值，请先补齐记录")
+                if dialect.name == "sqlite":
+                    if (not same_type or physical["nullable"] == field.required
+                            or physical.get("default") != sql_default(field, dialect)):
+                        raise ValueError("SQLite 回归数据库不支持修改已有列定义")
                 else:
-                    constraints.append(f"DEFAULT '{escaped_default}'")
-            
-            constraint_str = " ".join(constraints)
-            column_def = f"`{field_name}` {sql_type} {constraint_str}".strip()
-
-            try:
-                alter_sql = text(f"ALTER TABLE `{table_name}` ADD COLUMN {column_def}")
-                db.execute(alter_sql)
-                logger.info(f"成功为表 '{table_name}' 添加字段: {field_name}")
-            except Exception as e:
-                logger.error(f"为表 '{table_name}' 添加字段 '{field_name}' 失败: {e}")
-        
-        db.commit()
+                    changes.append("MODIFY COLUMN " + str(CreateColumn(new_column).compile(dialect=dialect)))
+            elif old is not None:
+                old_default = serialize_default(default_value(old))
+                old_type = str(sql_field_type(old).compile(dialect=dialect))
+                new_type = str(sql_field_type(field).compile(dialect=dialect))
+                # 小数位数也改变物理列类型，不能只比较字段类型名称。
+                changed = (
+                    field_type(old) != field_type(field) or bool(old.required) != field.required
+                    or old_default != serialize_default(field.defaultValue) or old_type != new_type
+                )
+                if changed and count and old_type != new_type:
+                    raise ValueError(f"字段 {field.name} 已有数据，不能自动转换或收窄类型")
+                if field.required and count:
+                    nulls = db.execute(text(f"SELECT COUNT(*) FROM `{table_name}` WHERE `{name}` IS NULL")).scalar()
+                    if nulls:
+                        raise ValueError(f"字段 {field.name} 存在空值，请先补齐记录")
+                if changed:
+                    if dialect.name == "sqlite":
+                        raise ValueError("SQLite 回归数据库不支持修改已有列定义")
+                    changes.append("MODIFY COLUMN " + str(CreateColumn(new_column).compile(dialect=dialect)))
+            existing_unique = [
+                item for item in indexes if item.get("unique", True)
+                and [value.lower() for value in item.get("column_names") or []] == [name]
+            ]
+            if field.unique and not existing_unique:
+                index_name = "uq_" + hashlib.sha256(f"{table_name}:{name}".encode()).hexdigest()[:20]
+                if dialect.name == "sqlite":
+                    changes.append(f"CREATE UNIQUE INDEX `{index_name}` ON `{table_name}` (`{name}`)")
+                else:
+                    changes.append(f"ADD UNIQUE INDEX `{index_name}` (`{name}`)")
+            elif not field.unique:
+                for item in existing_unique:
+                    if item.get("name"):
+                        index_name = self._safe_column_name(item["name"])
+                        if dialect.name == "sqlite":
+                            raise ValueError("SQLite 回归数据库不支持删除列内唯一约束")
+                        changes.append(f"DROP INDEX `{index_name}`")
+        if changes:
+            if dialect.name == "sqlite":
+                for change in changes:
+                    statement = change if change.startswith("CREATE UNIQUE INDEX") else f"ALTER TABLE `{table_name}` {change}"
+                    db.execute(text(statement))
+            else:
+                # MySQL 8 用一条 ALTER 应用列和索引变更；成功后才更新 ORM 中的实体定义。
+                db.execute(text(f"ALTER TABLE `{table_name}` " + ", ".join(changes)))
 
     def delete_entity(self, entity_id: str, force: bool = False, backup: bool = True) -> Dict[str, Any]:
         """删除实体"""
@@ -719,11 +681,7 @@ class EntityService:
                 table_name = f"entity_{self._safe_table_name(db_entity.name)}"
                 
                 # 检查表是否存在
-                check_table_query = text(f"""
-                    SELECT table_name FROM information_schema.tables
-                    WHERE table_schema = DATABASE() AND table_name = :table_name
-                """)
-                table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
+                table_exists = self._table_exists(db, table_name)
                 
                 if not table_exists:
                     # 表不存在，返回空记录
@@ -810,6 +768,7 @@ class EntityService:
                             record_data[col] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
                         else:
                             record_data[col] = val
+                    record_data = decode_record(record_data, db_entity.fields)
                     # Add alias fields for output consistency
                     if field_alias_map:
                         for alias, resolved_field in field_alias_map.items():
@@ -844,365 +803,158 @@ class EntityService:
                 "details": f"查询实体记录失败: {str(e)}"
             }
 
-    def create_entity_record(self, entity_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """创建实体数据记录 - 插入到实体独立表"""
+    def _prepare_record_data(self, entity, data, *, partial=False):
+        """统一处理别名、默认值和类型；局部更新只处理明确提交的字段。"""
+        if not isinstance(data, dict):
+            raise ValueError("记录数据必须是对象")
+        aliases = {}
+        for field in entity.fields:
+            for alias in field.aliases or []:
+                aliases[alias] = field.name
+        prepared = {aliases.get(key, key): value for key, value in data.items()}
+        for field in entity.fields:
+            if field.name in prepared:
+                prepared[field.name] = normalize_field_value(field, prepared[field.name])
+            elif not partial and field.default_value is not None:
+                prepared[field.name] = default_value(field)
+        return prepared
+
+    def create_entity_record(self, entity_id, data):
+        """校验并写入业务表，在同一事务中原子增加记录计数。"""
         try:
-            from sqlalchemy import text
-            import uuid
-            
             with get_db_session() as db:
-                # 检查实体是否存在
-                db_entity = db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).first()
-                if not db_entity:
-                    return {
-                        "success": False,
-                        "error": "entity_not_found",
-                        "details": "实体不存在"
-                    }
-
-                # 验证数据（简化版本）
-                validation_result = self._validate_record_data(db_entity, data)
-                if not validation_result["valid"]:
-                    return {
-                        "success": False,
-                        "error": "validation_failed",
-                        "details": validation_result["errors"]
-                    }
-
-                # 获取实体对应的表名
-                table_name = f"entity_{self._safe_table_name(db_entity.name)}"
-                
-                # 检查表是否存在
-                check_table_query = text(f"""
-                    SELECT table_name FROM information_schema.tables
-                    WHERE table_schema = DATABASE() AND table_name = :table_name
-                """)
-                table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
-                
-                if not table_exists:
-                    return {
-                        "success": False,
-                        "error": "table_not_found",
-                        "details": f"实体数据表 {table_name} 不存在，请重新创建实体"
-                    }
-
-                # 生成记录ID
+                entity = db.get(EntityDBModel, entity_id)
+                if entity is None:
+                    return {"success": False, "error": "entity_not_found", "details": "实体不存在"}
+                table_name = f"entity_{self._safe_table_name(entity.name)}"
+                if not self._table_exists(db, table_name):
+                    return {"success": False, "error": "table_not_found", "details": "实体数据表不存在，请在配置中保存实体"}
+                prepared = self._prepare_record_data(entity, data)
+                validation = self._validate_record_data(entity, prepared, db=db)
+                if not validation["valid"]:
+                    return {"success": False, "error": "validation_failed", "details": validation["errors"]}
                 record_id = str(uuid.uuid4())
-                
-                # 构建INSERT语句
-                columns = ["id"]
-                placeholders = [":id"]
-                params = {"id": record_id}
-                
-                def _normalize_field_value(field: EntityFieldDBModel, value: Any) -> Any:
-                    if value is None:
-                        return value
-                    field_type = (field.type or "").lower()
-                    if field_type in ("datetime", "timestamp"):
-                        if isinstance(value, datetime):
-                            return value.strftime("%Y-%m-%d %H:%M:%S")
-                        if isinstance(value, str):
-                            raw = value.strip()
-                            iso = raw
-                            if iso.endswith("Z"):
-                                iso = iso[:-1] + "+00:00"
-                            try:
-                                parsed = datetime.fromisoformat(iso)
-                                return parsed.strftime("%Y-%m-%d %H:%M:%S")
-                            except Exception:
-                                cleaned = raw.replace("T", " ").replace("Z", "")
-                                cleaned = re.sub(r"(?:\\+|-)\\d{2}:?\\d{2}$", "", cleaned)
-                                return cleaned
-                    if field_type == "date":
-                        if isinstance(value, date):
-                            return value.strftime("%Y-%m-%d")
-                        if isinstance(value, str):
-                            raw = value.strip()
-                            iso = raw
-                            if iso.endswith("Z"):
-                                iso = iso[:-1] + "+00:00"
-                            try:
-                                parsed = datetime.fromisoformat(iso)
-                                return parsed.strftime("%Y-%m-%d")
-                            except Exception:
-                                cleaned = raw.split("T")[0]
-                                return cleaned
-                    return value
+                columns, values, parameters = ["id"], [":id"], {"id": record_id}
+                for index, field in enumerate(entity.fields):
+                    if field.name in prepared:
+                        name = self._safe_column_name(field.name)
+                        parameter = f"value_{index}"
+                        columns.append(f"`{name}`")
+                        values.append(f":{parameter}")
+                        parameters[parameter] = storage_value(field, prepared[field.name])
+                db.execute(text(
+                    f"INSERT INTO `{table_name}` ({', '.join(columns)}) VALUES ({', '.join(values)})"
+                ), parameters)
+                db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).update({
+                    EntityDBModel.record_count: func.coalesce(EntityDBModel.record_count, 0) + 1
+                }, synchronize_session=False)
+                row = db.execute(text(f"SELECT * FROM `{table_name}` WHERE id = :id"), {"id": record_id}).mappings().one()
+                return {"success": True, "data": {"record": decode_record(row, entity.fields)}}
+        except (ValueError, TypeError, IntegrityError) as exc:
+            return {"success": False, "error": "validation_failed", "details": str(exc)}
+        except Exception as exc:
+            logger.exception("创建实体记录失败")
+            return {"success": False, "error": "creation_failed", "details": str(exc)}
 
-                for field in db_entity.fields:
-                    field_name = field.name
-                    if field_name in data:
-                        columns.append(f"`{field_name}`")
-                        param_name = f"p_{field_name}"
-                        placeholders.append(f":{param_name}")
-                        params[param_name] = _normalize_field_value(field, data[field_name])
-                
-                insert_sql = text(f"""
-                    INSERT INTO `{table_name}` ({', '.join(columns)})
-                    VALUES ({', '.join(placeholders)})
-                """)
-                
-                db.execute(insert_sql, params)
-                
-                # 更新实体记录数量
-                db_entity.record_count = (db_entity.record_count or 0) + 1
-                
-                db.commit()
-
-                # 查询刚插入的记录以获取完整数据（包括created_at等）
-                select_sql = text(f"SELECT * FROM `{table_name}` WHERE id = :id")
-                result = db.execute(select_sql, {"id": record_id})
-                row = result.fetchone()
-                columns = result.keys()
-                
-                # 构建响应数据
-                record_data = {}
-                if row:
-                    for col, val in zip(columns, row):
-                        if col in ['created_at', 'updated_at'] and val:
-                            record_data[col] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
-                        else:
-                            record_data[col] = val
-                else:
-                    record_data = data.copy()
-                    record_data["id"] = record_id
-
-                return {
-                    "success": True,
-                    "data": {"record": record_data}
-                }
-
-        except Exception as e:
-            logger.error(f"创建记录失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": "creation_failed",
-                "details": f"创建记录失败: {str(e)}"
-            }
-
-    def update_entity_record(self, entity_id: str, record_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """更新实体数据记录 - 更新实体独立表"""
+    def update_entity_record(self, entity_id, record_id, data):
+        """局部更新与创建共用转换规则，唯一性检查排除当前记录。"""
         try:
-            from sqlalchemy import text
-            
             with get_db_session() as db:
-                # 检查实体是否存在
-                db_entity = db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).first()
-                if not db_entity:
-                    return {
-                        "success": False,
-                        "error": "entity_not_found",
-                        "details": "实体不存在"
-                    }
+                entity = db.get(EntityDBModel, entity_id)
+                if entity is None:
+                    return {"success": False, "error": "entity_not_found", "details": "实体不存在"}
+                table_name = f"entity_{self._safe_table_name(entity.name)}"
+                if not self._table_exists(db, table_name):
+                    return {"success": False, "error": "table_not_found", "details": "实体数据表不存在"}
+                exists = db.execute(text(f"SELECT id FROM `{table_name}` WHERE id = :id"), {"id": record_id}).first()
+                if exists is None:
+                    return {"success": False, "error": "record_not_found", "details": "记录不存在"}
+                prepared = self._prepare_record_data(entity, data, partial=True)
+                validation = self._validate_record_data(entity, prepared, record_id, partial=True, db=db)
+                if not validation["valid"]:
+                    return {"success": False, "error": "validation_failed", "details": validation["errors"]}
+                assignments, parameters = [], {"id": record_id, "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}
+                for index, field in enumerate(entity.fields):
+                    if field.name in prepared:
+                        parameter = f"value_{index}"
+                        assignments.append(f"`{self._safe_column_name(field.name)}` = :{parameter}")
+                        parameters[parameter] = storage_value(field, prepared[field.name])
+                if not assignments:
+                    return {"success": False, "error": "no_data", "details": "没有要更新的数据"}
+                assignments.append("updated_at = :updated_at")
+                db.execute(text(
+                    f"UPDATE `{table_name}` SET {', '.join(assignments)} WHERE id = :id"
+                ), parameters)
+                row = db.execute(text(f"SELECT * FROM `{table_name}` WHERE id = :id"), {"id": record_id}).mappings().one()
+                return {"success": True, "data": {"record": decode_record(row, entity.fields)}}
+        except (ValueError, TypeError, IntegrityError) as exc:
+            return {"success": False, "error": "validation_failed", "details": str(exc)}
+        except Exception as exc:
+            logger.exception("更新实体记录失败")
+            return {"success": False, "error": "update_failed", "details": str(exc)}
 
-                # 获取实体对应的表名
-                table_name = f"entity_{self._safe_table_name(db_entity.name)}"
-                
-                # 检查记录是否存在
-                check_record_sql = text(f"SELECT id FROM `{table_name}` WHERE id = :id")
-                record_exists = db.execute(check_record_sql, {"id": record_id}).fetchone()
-                
-                if not record_exists:
-                    return {
-                        "success": False,
-                        "error": "record_not_found",
-                        "details": "记录不存在"
-                    }
+    def delete_entity_record(self, entity_id, record_id):
+        """删除成功才减少计数，避免不存在的记录导致数量错误。"""
+        try:
+            with get_db_session() as db:
+                entity = db.get(EntityDBModel, entity_id)
+                if entity is None:
+                    return {"success": False, "error": "entity_not_found", "details": "实体不存在"}
+                table_name = f"entity_{self._safe_table_name(entity.name)}"
+                if not self._table_exists(db, table_name):
+                    return {"success": False, "error": "table_not_found", "details": "实体数据表不存在"}
+                deleted = db.execute(text(f"DELETE FROM `{table_name}` WHERE id = :id"), {"id": record_id}).rowcount
+                if deleted == 0:
+                    return {"success": False, "error": "record_not_found", "details": "记录不存在"}
+                db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).update({
+                    EntityDBModel.record_count: case(
+                        (EntityDBModel.record_count > 0, EntityDBModel.record_count - 1), else_=0
+                    )
+                }, synchronize_session=False)
+                return {"success": True, "data": {"deleted_record_id": record_id}}
+        except Exception as exc:
+            logger.exception("删除实体记录失败")
+            return {"success": False, "error": "deletion_failed", "details": str(exc)}
 
-                # 验证数据（排除当前记录进行唯一性检查）
-                validation_result = self._validate_record_data(
-                    db_entity,
-                    data,
-                    exclude_record_id=record_id,
-                    partial=True
+    def _validate_record_data(self, entity, data, exclude_record_id=None, *, partial=False, db=None):
+        """复用当前事务检查必填、规则与唯一性，避免新连接看不到尚未提交的写入。"""
+        if db is None:
+            with get_db_session() as validation_db:
+                return self._validate_record_data(
+                    entity, data, exclude_record_id, partial=partial, db=validation_db
                 )
-                if not validation_result["valid"]:
-                    return {
-                        "success": False,
-                        "error": "validation_failed",
-                        "details": validation_result["errors"]
-                    }
-
-                # 构建UPDATE语句
-                set_clauses = ["updated_at = NOW()"]  # 自动更新 updated_at 字段
-                params = {"id": record_id}
-                
-                for field in db_entity.fields:
-                    field_name = field.name
-                    if field_name in data:
-                        param_name = f"p_{field_name}"
-                        set_clauses.append(f"`{field_name}` = :{param_name}")
-                        params[param_name] = data[field_name]
-                
-                if len(set_clauses) <= 1:  # 只有 updated_at，没有其他字段
-                    return {
-                        "success": False,
-                        "error": "no_data",
-                        "details": "没有要更新的数据"
-                    }
-                
-                update_sql = text(f"""
-                    UPDATE `{table_name}` 
-                    SET {', '.join(set_clauses)}
-                    WHERE id = :id
-                """)
-                
-                db.execute(update_sql, params)
-                db.commit()
-
-                # 查询更新后的记录
-                select_sql = text(f"SELECT * FROM `{table_name}` WHERE id = :id")
-                result = db.execute(select_sql, {"id": record_id})
-                row = result.fetchone()
-                columns = result.keys()
-                
-                # 构建响应数据
-                record_data = {}
-                if row:
-                    for col, val in zip(columns, row):
-                        if col in ['created_at', 'updated_at'] and val:
-                            record_data[col] = val.isoformat() if hasattr(val, 'isoformat') else str(val)
-                        else:
-                            record_data[col] = val
-                else:
-                    record_data = data.copy()
-                    record_data["id"] = record_id
-
-                return {
-                    "success": True,
-                    "data": {"record": record_data}
-                }
-
-        except Exception as e:
-            logger.error(f"更新记录失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": "update_failed",
-                "details": f"更新记录失败: {str(e)}"
-            }
-
-    def delete_entity_record(self, entity_id: str, record_id: str) -> Dict[str, Any]:
-        """删除实体数据记录 - 从实体独立表删除"""
-        try:
-            from sqlalchemy import text
-            import time
-            
-            with get_db_session() as db:
-                # 检查实体是否存在
-                db_entity = db.query(EntityDBModel).filter(EntityDBModel.id == entity_id).first()
-                if not db_entity:
-                    return {
-                        "success": False,
-                        "error": "entity_not_found",
-                        "details": "实体不存在"
-                    }
-
-                # 获取实体对应的表名
-                table_name = f"entity_{self._safe_table_name(db_entity.name)}"
-                
-                # 检查记录是否存在
-                check_record_sql = text(f"SELECT id FROM `{table_name}` WHERE id = :id")
-                record_exists = db.execute(check_record_sql, {"id": record_id}).fetchone()
-                
-                if not record_exists:
-                    return {
-                        "success": False,
-                        "error": "record_not_found",
-                        "details": "记录不存在"
-                    }
-
-                # 删除记录
-                delete_sql = text(f"DELETE FROM `{table_name}` WHERE id = :id")
-                db.execute(delete_sql, {"id": record_id})
-
-                # 更新实体记录数量
-                db_entity.record_count = max(0, (db_entity.record_count or 1) - 1)
-
-                db.commit()
-
-                return {
-                    "success": True,
-                    "data": {
-                        "record_id": record_id,
-                        "deleted_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                    }
-                }
-
-        except Exception as e:
-            logger.error(f"删除记录失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": "deletion_failed",
-                "details": f"删除记录失败: {str(e)}"
-            }
-
-    def _validate_record_data(
-        self,
-        db_entity: EntityDBModel,
-        data: Dict[str, Any],
-        exclude_record_id: Optional[str] = None,
-        *,
-        partial: bool = False
-    ) -> Dict[str, Any]:
-        """
-        验证记录数据
-        
-        Args:
-            db_entity: 实体数据库模型
-            data: 要验证的数据
-            exclude_record_id: 排除的记录ID（用于更新时排除自身）
-        """
-        from sqlalchemy import text
-        
         errors = []
-
-        # 检查必填字段（partial 更新仅校验传入字段）
-        for field in db_entity.fields:
-            if not field.required:
-                continue
+        table_name = f"entity_{self._safe_table_name(entity.name)}"
+        for field in entity.fields:
             if partial and field.name not in data:
                 continue
-            if field.name not in data or data[field.name] is None or data[field.name] == '':
+            value = data.get(field.name)
+            if field.required and value in (None, "", []):
                 errors.append(f"字段 '{field.display_name}' 是必填的")
-
-        # 检查唯一字段
-        with get_db_session() as db:
-            table_name = f"entity_{self._safe_table_name(db_entity.name)}"
-            
-            # 检查表是否存在
-            check_table_query = text(f"""
-                SELECT table_name FROM information_schema.tables
-                WHERE table_schema = DATABASE() AND table_name = :table_name
-            """)
-            table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
-            
-            if table_exists:
-                for field in db_entity.fields:
-                    if field.unique_field and field.name in data and data[field.name] is not None:
-                        # 构建唯一性检查查询
-                        if exclude_record_id:
-                            check_unique_sql = text(f"""
-                                SELECT COUNT(*) FROM `{table_name}` 
-                                WHERE `{field.name}` = :value AND id != :exclude_id
-                            """)
-                            count = db.execute(check_unique_sql, {
-                                "value": data[field.name],
-                                "exclude_id": exclude_record_id
-                            }).scalar()
-                        else:
-                            check_unique_sql = text(f"""
-                                SELECT COUNT(*) FROM `{table_name}` 
-                                WHERE `{field.name}` = :value
-                            """)
-                            count = db.execute(check_unique_sql, {"value": data[field.name]}).scalar()
-                        
-                        if count > 0:
-                            errors.append(f"字段 '{field.display_name}' 的值 '{data[field.name]}' 已存在，必须唯一")
-
-        return {
-            "valid": len(errors) == 0,
-            "errors": errors
-        }
+                continue
+            if value is None:
+                continue
+            rules = field.validation or {}
+            try:
+                for key, check in (
+                    ("min", lambda bound: value >= bound), ("max", lambda bound: value <= bound),
+                    ("minLength", lambda bound: len(value) >= bound),
+                    ("maxLength", lambda bound: len(value) <= bound),
+                    ("pattern", lambda pattern: re.fullmatch(pattern, str(value)) is not None),
+                ):
+                    if rules.get(key) is not None and not check(rules[key]):
+                        errors.append(f"字段 '{field.display_name}' 不满足 {key} 约束")
+            except (TypeError, ValueError):
+                errors.append(f"字段 '{field.display_name}' 的验证规则与数据类型不匹配")
+            if field.unique_field and field.name in data:
+                sql = f"SELECT COUNT(*) FROM `{table_name}` WHERE `{self._safe_column_name(field.name)}` = :value"
+                parameters = {"value": storage_value(field, value)}
+                if exclude_record_id is not None:
+                    sql += " AND id != :exclude_id"
+                    parameters["exclude_id"] = exclude_record_id
+                if db.execute(text(sql), parameters).scalar():
+                    errors.append(f"字段 '{field.display_name}' 的值必须唯一")
+        return {"valid": not errors, "errors": errors}
 
     def get_entity_relationships(self, entity_id: str) -> Dict[str, Any]:
         """获取实体关系列表"""
@@ -1522,114 +1274,35 @@ class EntityService:
                 "details": f"删除关系失败: {str(e)}"
             }
     
-    def _create_entity_database_table_sync(self, entity_name: str, fields: List, db: Session) -> None:
-        """为实体自动创建MySQL数据库表（同步版本）"""
-        from sqlalchemy import text
-
+    def _create_entity_database_table_sync(self, entity_name, fields, db):
+        """使用明确的 SQL 类型和系统列建表，DDL 失败交给调用方回滚配置。"""
         table_name = f"entity_{self._safe_table_name(entity_name)}"
-
-        # 检查表是否已存在 (MySQL语法)
-        check_table_query = text("""
-            SELECT table_name FROM information_schema.tables
-            WHERE table_schema = DATABASE() AND table_name = :table_name
-        """)
-        table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
-
-        if table_exists:
-            logger.warning(f"⚠️ 表 {table_name} 已存在，跳过创建")
-            return
-
-        # 构建表结构 (MySQL语法)
+        if self._table_exists(db, table_name):
+            raise ValueError("实体数据表已存在")
+        dialect = db.bind.dialect
         columns = [
-            "id VARCHAR(36) PRIMARY KEY DEFAULT (UUID())",
-            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            Column("id", String(36), primary_key=True,
+                   server_default=text("(UUID())") if dialect.name == "mysql" else None),
+            Column("created_at", DateTime(), server_default=func.current_timestamp()),
+            Column("updated_at", DateTime(), server_default=text(
+                "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" if dialect.name == "mysql" else "CURRENT_TIMESTAMP"
+            )),
         ]
+        columns.extend(self._column_definition(field, dialect, unique=field.unique) for field in fields)
+        table = Table(
+            table_name, MetaData(), *columns, mysql_engine="InnoDB",
+            mysql_charset="utf8mb4", mysql_collate="utf8mb4_unicode_ci",
+        )
+        table.create(db.connection())
 
-        foreign_keys = []
-        indexes = []
-
-        # 添加业务字段
-        for field in fields:
-            field_name = self._safe_column_name(field.name)
-            field_type = field.type.value if hasattr(field.type, 'value') else str(field.type)
-
-            # 映射字段类型到MySQL类型
-            sql_type = self._map_field_type_to_mysql(field_type)
-
-            constraints = []
-            if field.required:
-                constraints.append("NOT NULL")
-            if field.unique:
-                constraints.append("UNIQUE")
-            if hasattr(field, 'defaultValue') and field.defaultValue:
-                escaped_default = self._escape_sql_literal(field.defaultValue)
-                constraints.append(f"DEFAULT '{escaped_default}'")
-
-            constraint_str = " ".join(constraints)
-            column_def = f"`{field_name}` {sql_type} {constraint_str}".strip()
-            columns.append(column_def)
-
-        # 添加外键约束
-        if foreign_keys:
-            columns.extend(foreign_keys)
-
-        # 创建表 (MySQL语法，添加字符集和引擎)
-        create_table_sql = f"""
-            CREATE TABLE `{table_name}` (
-                {', '.join(columns)}
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """
-
-        try:
-            # 创建表
-            db.execute(text(create_table_sql))
-
-            # 创建索引
-            for index_sql in indexes:
-                try:
-                    db.execute(text(index_sql))
-                except Exception as idx_error:
-                    logger.warning(f"⚠️ 创建索引失败: {str(idx_error)}")
-
-            db.commit()
-            logger.info(f"✅ 成功创建MySQL实体表: {table_name}")
-            logger.debug(f"   表结构: {', '.join(columns[:3])} + {len(columns)-3} 个字段列")
-            if foreign_keys:
-                logger.debug(f"   外键关系: {len(foreign_keys)} 个")
-            if indexes:
-                logger.debug(f"   索引: {len(indexes)} 个")
-        except Exception as e:
-            logger.error(f"❌ 创建MySQL表 {table_name} 失败: {str(e)}")
-            raise e
-
-    async def _create_entity_database_table(self, entity_name: str, fields: List, db: Session) -> None:
-        """为实体自动创建MySQL数据库表"""
-        # 调用同步版本
+    async def _create_entity_database_table(self, entity_name, fields, db):
         self._create_entity_database_table_sync(entity_name, fields, db)
 
-    def _map_field_type_to_mysql(self, field_type: str) -> str:
-        """映射字段类型到MySQL类型"""
-        type_mapping = {
-            "text": "VARCHAR(255)",
-            "string": "VARCHAR(255)",
-            "number": "INT",
-            "integer": "INT",
-            "decimal": "DECIMAL(10,2)",
-            "float": "FLOAT",
-            "boolean": "BOOLEAN",
-            "date": "DATE",
-            "datetime": "DATETIME",
-            "timestamp": "TIMESTAMP",
-            "json": "JSON",
-            "enum": "VARCHAR(50)",
-            "select": "VARCHAR(100)",
-            "email": "VARCHAR(255)",
-            "phone": "VARCHAR(20)",
-            "url": "VARCHAR(500)"
-        }
-        return type_mapping.get(field_type.lower(), "VARCHAR(255)")
-    
+    def _map_field_type_to_mysql(self, field_type):
+        from sqlalchemy.dialects.mysql import dialect
+        field = type("Field", (), {"type": field_type, "validation": {}})()
+        return str(sql_field_type(field).compile(dialect=dialect()))
+
     async def _update_entity_database_relationships(self, entity_name: str) -> None:
         """更新实体数据库表的关系结构"""
         try:

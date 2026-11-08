@@ -1,0 +1,53 @@
+name: Backend regressions
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backend-regressions-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test-ci-database-password
+          MYSQL_DATABASE: ailf_regression_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest-ci-database-password"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/tests/regression/requirements.txt
+      - name: Install HTTP backend test dependencies
+        run: python -m pip install -r backend/tests/regression/requirements.txt
+      - name: Run isolated SQLite and mocked Redis regressions
+        env:
+          PYTHONUTF8: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m unittest discover -s backend/tests/regression -v
+      - name: Run MySQL 8 and Redis 7 integration regressions
+        env:
+          PYTHONUTF8: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+          AILF_REGRESSION_DATABASE_URL: mysql+pymysql://root:test-ci-database-password@127.0.0.1:3306/ailf_regression_ci
+          AILF_REGRESSION_REDIS_URL: redis://127.0.0.1:6379/15
+        run: python -m unittest discover -s backend/tests/regression -v

@@ -31,7 +31,8 @@ from app.services.schema_strategies import (
     EndNodeStrategy,
     ConditionNodeStrategy,
     NotificationNodeStrategy,
-    ChartStrategy
+    ChartStrategy,
+    UserInputStrategy
 )
 from app.services.schema_templates import TemplateLoader
 from app.services.slot_filling_service import slot_filling_service
@@ -55,6 +56,7 @@ class AmisSchemaGenerator:
             EndNodeStrategy(self.template_loader),
             ConditionNodeStrategy(self.template_loader),
             NotificationNodeStrategy(self.template_loader),
+            UserInputStrategy(self.template_loader),  # 旧流程的纯输入节点
             ChartStrategy(self.template_loader),  # 图表策略（在 API Call 之前）
             ApiCallStrategy(self.template_loader),  # 放最后，作为默认策略
         ]

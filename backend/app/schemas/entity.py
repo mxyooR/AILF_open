@@ -4,7 +4,8 @@
 """
 from datetime import datetime
 from typing import Any, Optional, List, Dict, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+from app.services.entity_storage import field_type, normalize_field_value, validate_identifier
 from enum import Enum
 
 
@@ -49,7 +50,7 @@ class FieldValidation(BaseModel):
     minLength: Optional[int] = Field(None, description="最小长度")
     maxLength: Optional[int] = Field(None, description="最大长度")
     pattern: Optional[str] = Field(None, description="正则表达式")
-    precision: Optional[int] = Field(None, description="小数精度")
+    precision: Optional[int] = Field(None, ge=0, le=12, description="小数精度")
     minDate: Optional[str] = Field(None, description="最小日期")
     maxDate: Optional[str] = Field(None, description="最大日期")
     format: Optional[str] = Field(None, description="日期格式")
@@ -83,6 +84,22 @@ class EntityFieldCreateRequest(BaseModel):
     validation: Optional[FieldValidation] = Field(None, description="验证规则")
     options: Optional[List[str]] = Field(None, description="选项列表")
     aliases: Optional[List[str]] = Field(None, description="字段别名列表")
+
+    @field_validator("name")
+    @classmethod
+    def valid_column_name(cls, value):
+        validate_identifier(value)
+        if value.lower() in {"id", "created_at", "updated_at"}:
+            raise ValueError("不能使用系统字段名称")
+        return value
+
+    @model_validator(mode="after")
+    def valid_settings(self):
+        if self.unique and field_type(self) in {"json", "multiselect"}:
+            raise ValueError("JSON 和多选字段不支持普通唯一索引")
+        if self.defaultValue is not None:
+            self.defaultValue = normalize_field_value(self, self.defaultValue)
+        return self
 
 
 # 关系约束模型
@@ -137,10 +154,26 @@ class EntityBase(BaseModel):
     scenarioId: Optional[str] = Field(None, description="关联的场景ID")
 
 
+def _check_fields(fields):
+    names = [field.name.lower() for field in fields or []]
+    if len(set(names)) != len(names):
+        raise ValueError("字段名称重复，名称不区分大小写")
+
+
 # 实体创建请求模型
 class EntityCreateRequest(EntityBase):
     """创建实体请求"""
     fields: List[EntityFieldCreateRequest] = Field(..., description="字段列表")
+
+    @field_validator("name")
+    @classmethod
+    def valid_entity_name(cls, value):
+        return validate_identifier(value, max_length=57)
+
+    @model_validator(mode="after")
+    def distinct_fields(self):
+        _check_fields(self.fields)
+        return self
 
 
 # 实体更新请求模型
@@ -151,6 +184,12 @@ class EntityUpdateRequest(BaseModel):
     icon: Optional[str] = Field(None, description="图标")
     isRole: Optional[bool] = Field(None, description="是否为角色实体")
     fields: Optional[List[EntityFieldCreateRequest]] = Field(None, description="字段列表")
+
+    @model_validator(mode="after")
+    def distinct_fields(self):
+        if self.fields is not None:
+            _check_fields(self.fields)
+        return self
 
 
 # 实体完整信息模型

@@ -7,7 +7,7 @@ import json
 import time
 import logging
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from typing import Dict, Any, Callable, Optional, List
 from pathlib import Path
@@ -1806,6 +1806,8 @@ class DynamicRouteHandler:
             # 分页参数
             page = int(request.query_params.get("page", 1))
             limit = int(request.query_params.get("limit", 20))
+            if page < 1 or not 1 <= limit <= 1000:
+                raise ValueError("page 必须大于 0，limit 必须在 1 到 1000 之间")
             search = request.query_params.get("search", "")
             sort_field = request.query_params.get("sort", "created_at")
             sort_order = request.query_params.get("order", "desc")
@@ -1817,7 +1819,7 @@ class DynamicRouteHandler:
             # 查询条件
             where_conditions = []
             where_params: Dict[str, Any] = {}
-            valid_fields = {
+            valid_fields = {"id", "created_at", "updated_at"} | {
                 name for name in field_definitions.keys()
                 if self._sql_identifier_pattern.match(name)
             }
@@ -1828,14 +1830,8 @@ class DynamicRouteHandler:
                 field_def = field_definitions.get(field_name)
                 if not field_def:
                     return value
-                try:
-                    if field_def.type == 'integer':
-                        return int(value)
-                    if field_def.type == 'number':
-                        return float(value)
-                except Exception:
-                    return value
-                return value
+                from app.services.entity_storage import storage_value
+                return storage_value(field_def, value)
 
             def _resolve_template_value(value: Any) -> Any:
                 if not isinstance(value, str):
@@ -1958,12 +1954,8 @@ class DynamicRouteHandler:
                 f"{'DESC' if sort_order == 'desc' else 'ASC'}"
             )
 
-            # 检查表是否存在（MySQL）
-            check_table_query = text("""
-                SELECT TABLE_NAME FROM information_schema.TABLES
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name
-            """)
-            table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
+            from sqlalchemy import inspect
+            table_exists = inspect(db.connection()).has_table(table_name)
 
             if not table_exists:
                 # 表不存在时直接返回空结果
@@ -1998,38 +1990,8 @@ class DynamicRouteHandler:
 
             rows = db.execute(data_query, where_params).fetchall()
 
-            # 构建返回项
-            items = []
-            for row in rows:
-                item = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
-
-                # datetime/Decimal 格式化
-                for key, value in item.items():
-                    if isinstance(value, datetime):
-                        item[key] = value.strftime('%Y-%m-%d %H:%M:%S')
-                    elif isinstance(value, date):
-                        item[key] = value.strftime('%Y-%m-%d')
-                    elif isinstance(value, Decimal):
-                        item[key] = float(value)
-
-                # 字段类型再处理
-                for field_name, field_def in field_definitions.items():
-                    if field_name in item and item[field_name]:
-                        if field_def.type == 'json' and isinstance(item[field_name], str):
-                            try:
-                                item[field_name] = json.loads(item[field_name])
-                            except Exception:
-                                pass
-                        elif field_def.type == 'number':
-                            try:
-                                item[field_name] = float(item[field_name])
-                            except Exception:
-                                pass
-                        elif field_def.type in ['date', 'datetime'] and isinstance(item[field_name], str):
-                            # date/datetime 已是字符串时无需处理
-                            pass
-
-                items.append(item)
+            from app.services.entity_storage import decode_record
+            items = [decode_record(row._mapping, entity_model.fields) for row in rows]
 
             return {
                 "code": 200,
@@ -2044,683 +2006,233 @@ class DynamicRouteHandler:
                 }
             }
 
+        except (ValueError, TypeError) as exc:
+            return {"code": 400, "message": str(exc), "data": None}
         except Exception as e:
+            db.rollback()
             logger.error(f"实体列表查询失败: {e}")
             return {
                 "code": 500,
                 "message": f"查询{entity}失败: {str(e)}",
                 "data": None
             }
-    async def _handle_entity_create(self, entity: str, entity_model, field_definitions: Dict, request: Request, db, api_id: str) -> Dict[str, Any]:
-        """处理实体创建"""
-        from sqlalchemy import text
-        import json
+    async def _handle_entity_create(self, entity, entity_model, field_definitions, request, db, api_id):
+        """动态业务 API 与实体管理接口共用字段转换，写入和计数在一个事务中。"""
+        from sqlalchemy import inspect, text, func
+        from sqlalchemy.exc import IntegrityError
+        from app.services.entity_service import entity_service
+        from app.services.entity_storage import decode_record, storage_value
         import uuid
-        import time
-        
         try:
-            # 获取请求数据
-            if request.method == "POST":
-                try:
-                    if hasattr(request, '_json'):
-                        data = request._json
-                    else:
-                        body = await request.body()
-                        data = json.loads(body) if body else {}
-                except:
-                    data = {}
-            else:
-                data = dict(request.query_params)
-            
-            # 构建实体表名（使用实体服务创建的表）
+            data = await request.json() if request.method == "POST" else dict(request.query_params)
+            if not isinstance(data, dict):
+                raise ValueError("请求数据必须是对象")
             table_name = self._build_entity_table_name(entity)
-            table_name_sql = self._quote_identifier(table_name)
-            
-            # 检查表是否存在（不自动创建，依赖实体建模）
-            check_table_query = text("""
-                SELECT TABLE_NAME FROM information_schema.TABLES
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name
-            """)
-            table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
-            
-            if not table_exists:
-                return {
-                    "code": 404,
-                    "message": f"实体表不存在，请先在实体建模中创建 '{entity}' 实体",
-                    "data": {
-                        "table_missing": True,
-                        "entity_name": entity,
-                        "expected_table": table_name
-                    }
-                }
-            
-            # 数据验证和转换
-            processed_data = {}
-            errors = []
-            
-            # 添加系统字段
-            processed_data['id'] = str(uuid.uuid4())
-            processed_data['created_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-            processed_data['updated_at'] = processed_data['created_at']
-            
-            # 处理业务字段
-            for field_name, field_def in field_definitions.items():
-                value = data.get(field_name)
-                
-                # 必填字段验证
-                if field_def.required and (value is None or value == ""):
-                    errors.append(f"字段 '{field_def.display_name}' 为必填项")
-                    continue
-                
-                # 数据类型转换和验证
-                if value is not None:
-                    try:
-                        if field_def.type == 'number':
-                            processed_data[field_name] = float(value)
-                        elif field_def.type == 'integer':
-                            processed_data[field_name] = int(value)
-                        elif field_def.type == 'json':
-                            if isinstance(value, (dict, list)):
-                                processed_data[field_name] = json.dumps(value)
-                            else:
-                                processed_data[field_name] = str(value)
-                        elif field_def.type == 'select' and field_def.options:
-                            if str(value) not in field_def.options:
-                                errors.append(f"字段 '{field_def.display_name}' 值不在允许范围内")
-                            else:
-                                processed_data[field_name] = str(value)
-                        else:
-                            processed_data[field_name] = str(value)
-                    except Exception as e:
-                        errors.append(f"字段 '{field_def.display_name}' 数据格式错误: {str(e)}")
-                else:
-                    processed_data[field_name] = None
-            
-            if errors:
-                return {
-                    "code": 400,
-                    "message": "数据验证失败",
-                    "data": {
-                        "errors": errors,
-                        "input_data": data
-                    }
-                }
-            
-            # 构建插入语句
-            safe_columns: List[str] = []
-            value_placeholders: List[str] = []
-            sql_params: Dict[str, Any] = {}
-            for idx, (col, val) in enumerate(processed_data.items()):
-                safe_col = self._sanitize_sql_identifier(col)
-                safe_columns.append(self._quote_identifier(safe_col))
-                param_key = f"v_{idx}"
-                value_placeholders.append(f":{param_key}")
-                sql_params[param_key] = val
+            table_sql = self._quote_identifier(table_name)
+            if not inspect(db.connection()).has_table(table_name):
+                return {"code": 404, "message": "实体数据表不存在，请先保存实体配置", "data": None}
+            prepared = entity_service._prepare_record_data(entity_model, data)
+            validation = entity_service._validate_record_data(entity_model, prepared, db=db)
+            if not validation["valid"]:
+                return {"code": 400, "message": "数据验证失败", "data": {"errors": validation["errors"]}}
+            record_id = str(uuid.uuid4())
+            values = {"id": record_id}
+            for field in entity_model.fields:
+                if field.name in prepared:
+                    values[field.name] = storage_value(field, prepared[field.name])
+            columns, placeholders, parameters = [], [], {}
+            for index, (column, value) in enumerate(values.items()):
+                columns.append(self._quote_identifier(column))
+                placeholders.append(f":value_{index}")
+                parameters[f"value_{index}"] = value
+            db.execute(text(
+                f"INSERT INTO {table_sql} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+            ), parameters)
+            model = type(entity_model)
+            db.query(model).filter(model.id == entity_model.id).update({
+                model.record_count: func.coalesce(model.record_count, 0) + 1
+            }, synchronize_session=False)
+            row = db.execute(text(f"SELECT * FROM {table_sql} WHERE id = :id"), {"id": record_id}).mappings().one()
+            return {"code": 201, "message": f"创建{entity_model.display_name}成功",
+                    "data": {**decode_record(row, entity_model.fields), "entity": entity}}
+        except (ValueError, TypeError, IntegrityError) as exc:
+            db.rollback()
+            return {"code": 400, "message": f"数据验证失败: {exc}", "data": None}
+        except Exception:
+            db.rollback()
+            logger.exception("动态 API 创建记录失败")
+            return {"code": 500, "message": "创建业务记录失败", "data": None}
 
-            insert_query = text(f"""
-                INSERT INTO {table_name_sql} ({', '.join(safe_columns)}) 
-                VALUES ({', '.join(value_placeholders)})
-            """)
-            
-            # 执行插入
-            db.execute(insert_query, sql_params)
-            db.commit()
-            
-            return {
-                "code": 201,
-                "message": f"创建{entity_model.display_name}成功",
-                "data": {
-                    "id": processed_data['id'],
-                    "entity": entity,
-                    "created_at": processed_data['created_at'],
-                    **{k: v for k, v in processed_data.items() if k not in ['created_at', 'updated_at']}
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ 创建失败: {e}")
-            return {
-                "code": 500,
-                "message": f"创建{entity}失败: {str(e)}",
-                "data": None
-            }
-
-    async def _handle_entity_get(self, entity: str, entity_model, field_definitions: Dict, request: Request, db, handler_config: Dict = None) -> Dict[str, Any]:
-        """Handle single entity query."""
-        from sqlalchemy import text
-        import json
-
+    async def _handle_entity_get(self, entity, entity_model, field_definitions, request, db, handler_config=None):
+        """按真实请求中的标识读取唯一记录，不把 URL 尾部误当作记录 ID。"""
+        from sqlalchemy import inspect, text
+        from app.services.entity_storage import decode_record
         try:
-            # Parse entity ID from path/query params
-            path_params = getattr(request, "path_params", {}) or {}
-            query_params = dict(request.query_params) if hasattr(request, "query_params") else {}
-            entity_id = None
-            param_name_used = None
-
-            query_field = None
-            query_param = None
-            query_location = None
-            if handler_config:
-                query_field = handler_config.get("query_field") or handler_config.get("queryField")
-                query_param = handler_config.get("query_param") or handler_config.get("queryParam")
-                query_location = handler_config.get("query_location") or handler_config.get("queryLocation")
-
-            candidate_params = []
-            if query_param:
-                candidate_params.append(query_param)
-            candidate_params.extend([f"{entity}_id", f"{entity}_number", "id", "entity_id", "number"])
-            if query_field and query_field not in candidate_params:
-                candidate_params.append(query_field)
-
-            def _find_in_container(container):
-                nonlocal entity_id, param_name_used
-                for name in candidate_params:
-                    if name in container:
-                        value = container.get(name)
-                        if value is None or value == "":
-                            continue
-                        entity_id = value
-                        param_name_used = name
-                        return True
-                return False
-
-            if query_location == "path":
-                _find_in_container(path_params)
-            elif query_location == "query":
-                _find_in_container(query_params)
-            elif query_location == "body":
-                # GET typically does not use body
-                pass
-            else:
-                if not _find_in_container(path_params):
-                    _find_in_container(query_params)
-
-            # Fallback: take tail of URL path
-            if not entity_id:
-                path_parts = request.url.path.split("/")
-                entity_id = path_parts[-1] if path_parts else None
-                if entity_id:
-                    param_name_used = param_name_used or "path_tail"
-
-            logger.debug(
-                f"[EntityGet] entity={entity}, entity_id={entity_id}, param_name={param_name_used}, "
-                f"path_params={path_params}, query_params={query_params}, url_path={request.url.path}"
-            )
-
-            if not entity_id:
-                return {
-                    "code": 400,
-                    "message": "Missing entity ID",
-                    "data": {
-                        "hint": "Provide entity ID in path or query parameters",
-                        "candidates": candidate_params
-                    }
-                }
-
-            # Resolve query field
-            if not query_field:
-                if param_name_used and param_name_used in field_definitions:
-                    query_field = param_name_used
-                elif param_name_used and param_name_used.endswith("_id"):
-                    entity_number_field = f"{entity}_number"
-                    param_number_field = f"{param_name_used[:-3]}_number"
-                    if entity_number_field in field_definitions:
-                        query_field = entity_number_field
-                    elif param_number_field in field_definitions:
-                        query_field = param_number_field
-                    elif "id" in field_definitions:
-                        query_field = "id"
-                elif "id" in field_definitions:
-                    query_field = "id"
-                elif f"{entity}_number" in field_definitions:
-                    query_field = f"{entity}_number"
-                else:
-                    query_field = param_name_used or "id"
-
-            if query_field not in field_definitions:
-                if param_name_used and param_name_used.endswith("_id"):
-                    entity_number_field = f"{entity}_number"
-                    param_number_field = f"{param_name_used[:-3]}_number"
-                    if entity_number_field in field_definitions:
-                        query_field = entity_number_field
-                    elif param_number_field in field_definitions:
-                        query_field = param_number_field
-                if query_field not in field_definitions and "id" in field_definitions:
-                    logger.warning(
-                        f"[EntityGet] query_field '{query_field}' not in field definitions, fallback to id"
-                    )
-                    query_field = "id"
-                if query_field not in field_definitions:
-                    return {
-                        "code": 400,
-                        "message": f"Query field '{query_field}' not found",
-                        "data": {
-                            "available_fields": list(field_definitions.keys())
-                        }
-                    }
-
+            lookup = self._resolve_entity_identifier(entity, field_definitions, request, handler_config)
+            if not lookup["ok"]:
+                return lookup["error"]
             table_name = self._build_entity_table_name(entity)
-            table_name_sql = self._quote_identifier(table_name)
+            if not inspect(db.connection()).has_table(table_name):
+                return {"code": 404, "message": "实体数据表不存在", "data": None}
+            rows = db.execute(text(
+                f"SELECT * FROM {self._quote_identifier(table_name)} "
+                f"WHERE {self._quote_identifier(lookup['query_field'])} = :value LIMIT 2"
+            ), {"value": lookup["entity_id"]}).mappings().all()
+            if not rows:
+                return {"code": 404, "message": "记录不存在", "data": None}
+            if len(rows) > 1:
+                return {"code": 409, "message": "标识匹配多条记录，请使用唯一字段", "data": None}
+            return {"code": 200, "message": f"查询{entity_model.display_name}成功",
+                    "data": decode_record(rows[0], entity_model.fields)}
+        except (TypeError, ValueError) as exc:
+            return {"code": 400, "message": str(exc), "data": None}
+        except Exception:
+            db.rollback()
+            logger.exception("动态 API 查询记录失败")
+            return {"code": 500, "message": "查询业务记录失败", "data": None}
 
-            logger.debug(
-                f"[EntityGet] Query table: {table_name}, field: {query_field}, value: {entity_id}"
-            )
-
-            # Check table exists
-            check_table_query = text("""
-                SELECT TABLE_NAME FROM information_schema.TABLES
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name
-            """)
-            table_exists = db.execute(check_table_query, {"table_name": table_name}).fetchone()
-
-            if not table_exists:
-                return {
-                    "code": 404,
-                    "message": f"{entity_model.display_name} not found",
-                    "data": None
-                }
-
-            # Query data
-            safe_query_field = self._sanitize_sql_identifier(query_field)
-            query = text(
-                f"SELECT * FROM {table_name_sql} "
-                f"WHERE {self._quote_identifier(safe_query_field)} = :entity_id"
-            )
-            logger.debug(
-                f"[EntityGet] Execute SQL: SELECT * FROM {table_name} WHERE {safe_query_field} = '{entity_id}'"
-            )
-            result = db.execute(query, {"entity_id": entity_id}).fetchone()
-
-            if not result:
-                return {
-                    "code": 404,
-                    "message": f"{entity_model.display_name} not found",
-                    "data": None
-                }
-
-            # Convert result
-            item = dict(result._mapping) if hasattr(result, '_mapping') else dict(result)
-
-            # Normalize datetime/decimal types
-            for key, value in item.items():
-                if isinstance(value, datetime):
-                    item[key] = value.strftime('%Y-%m-%d %H:%M:%S')
-                elif isinstance(value, date):
-                    item[key] = value.strftime('%Y-%m-%d')
-                elif isinstance(value, Decimal):
-                    item[key] = float(value)
-
-            # Convert typed fields
-            for field_name, field_def in field_definitions.items():
-                if field_name in item and item[field_name]:
-                    if field_def.type == 'json' and isinstance(item[field_name], str):
-                        try:
-                            item[field_name] = json.loads(item[field_name])
-                        except:
-                            pass
-                    elif field_def.type == 'number':
-                        try:
-                            item[field_name] = float(item[field_name])
-                        except:
-                            pass
-
-            return {
-                "code": 200,
-                "message": f"Get {entity_model.display_name} success",
-                "data": item
-            }
-
-        except Exception as e:
-            logger.error(f"EntityGet failed: {e}")
-            return {
-                "code": 500,
-                "message": f"Get {entity} failed: {str(e)}",
-                "data": None
-            }
-
-    def _resolve_entity_identifier(
-        self,
-        entity: str,
-        field_definitions: Dict[str, Any],
-        request: Request,
-        handler_config: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """统一解析实体标识字段和值，供 get/update/delete 复用。"""
-        path_params = getattr(request, "path_params", {}) or {}
-        query_params = dict(request.query_params) if hasattr(request, "query_params") else {}
-        entity_id = None
-        param_name_used = None
-
-        query_field = None
-        query_param = None
-        query_location = None
-        if handler_config:
-            query_field = handler_config.get("query_field") or handler_config.get("queryField")
-            query_param = handler_config.get("query_param") or handler_config.get("queryParam")
-            query_location = handler_config.get("query_location") or handler_config.get("queryLocation")
-
-        candidate_params = []
-        if query_param:
-            candidate_params.append(query_param)
-        candidate_params.extend([f"{entity}_id", f"{entity}_number", "id", "entity_id", "number"])
-        if query_field and query_field not in candidate_params:
-            candidate_params.append(query_field)
-
-        def _find_in_container(container):
-            nonlocal entity_id, param_name_used
-            for name in candidate_params:
-                if name in container:
-                    value = container.get(name)
-                    if value is None or value == "":
-                        continue
-                    entity_id = value
-                    param_name_used = name
-                    return True
-            return False
-
-        if query_location == "path":
-            _find_in_container(path_params)
-        elif query_location == "query":
-            _find_in_container(query_params)
-        elif query_location == "body":
-            pass
-        else:
-            if not _find_in_container(path_params):
-                _find_in_container(query_params)
-
-        if not entity_id:
-            path_parts = request.url.path.split("/")
-            entity_id = path_parts[-1] if path_parts else None
-            if entity_id:
-                param_name_used = param_name_used or "path_tail"
-
-        if not entity_id:
-            return {
-                "ok": False,
-                "error": {
-                    "code": 400,
-                    "message": "缺少实体标识",
-                    "data": {
-                        "hint": "请在 path 或 query 中传入实体标识",
-                        "candidates": candidate_params,
-                    },
-                },
-            }
-
-        if not query_field:
-            if param_name_used and param_name_used in field_definitions:
-                query_field = param_name_used
-            elif param_name_used and param_name_used.endswith("_id"):
-                entity_number_field = f"{entity}_number"
-                param_number_field = f"{param_name_used[:-3]}_number"
-                if entity_number_field in field_definitions:
-                    query_field = entity_number_field
-                elif param_number_field in field_definitions:
-                    query_field = param_number_field
-                elif "id" in field_definitions:
-                    query_field = "id"
-            elif "id" in field_definitions:
-                query_field = "id"
-            elif f"{entity}_number" in field_definitions:
-                query_field = f"{entity}_number"
-            else:
-                query_field = param_name_used or "id"
-
-        if query_field not in field_definitions:
-            if param_name_used and param_name_used.endswith("_id"):
-                entity_number_field = f"{entity}_number"
-                param_number_field = f"{param_name_used[:-3]}_number"
-                if entity_number_field in field_definitions:
-                    query_field = entity_number_field
-                elif param_number_field in field_definitions:
-                    query_field = param_number_field
-            if query_field not in field_definitions and "id" in field_definitions:
-                logger.warning(
-                    f"[EntityLookup] query_field '{query_field}' 不存在，回退到 id"
-                )
-                query_field = "id"
-            if query_field not in field_definitions:
-                return {
-                    "ok": False,
-                    "error": {
-                        "code": 400,
-                        "message": f"查询字段 '{query_field}' 不存在",
-                        "data": {"available_fields": list(field_definitions.keys())},
-                    },
-                }
-
-        return {
-            "ok": True,
-            "entity_id": entity_id,
-            "query_field": query_field,
-            "param_name_used": param_name_used,
-            "path_params": path_params,
-            "query_params": query_params,
+    def _resolve_entity_identifier(self, entity, field_definitions, request, handler_config=None):
+        """仅从真实参数中解析标识，显式 query_field 或 query_param 不做隐式回退。"""
+        config = handler_config or {}
+        field = config.get("query_field") or config.get("queryField")
+        parameter = config.get("query_param") or config.get("queryParam")
+        location = config.get("query_location") or config.get("queryLocation")
+        candidates = [parameter] if parameter else [
+            f"{entity}_id", f"{entity}_number", "id", "entity_id", "number"
+        ]
+        if field and not parameter and field not in candidates:
+            candidates.append(field)
+        containers = {
+            "path": getattr(request, "path_params", {}) or {},
+            "query": dict(request.query_params),
+            "body": getattr(request, "_json", {}) or {},
         }
+        locations = [location] if location in containers else ["path", "query"]
+        value, used = None, None
+        for scope in locations:
+            container = containers[scope]
+            if not isinstance(container, dict):
+                continue
+            for name in candidates:
+                if name in container and container[name] is not None and container[name] != "":
+                    value, used = container[name], name
+                    break
+            if used is not None:
+                break
+        if used is None:
+            return {"ok": False, "error": {
+                "code": 400, "message": "缺少实体标识", "data": {"candidates": candidates}
+            }}
+        available = set(field_definitions) | {"id", "created_at", "updated_at"}
+        if field is None:
+            if used in available:
+                field = used
+            elif used.endswith("_id") and f"{used[:-3]}_number" in available:
+                field = f"{used[:-3]}_number"
+            elif used.endswith("_id") and f"{entity}_number" in available:
+                field = f"{entity}_number"
+            else:
+                field = "id"
+        if field not in available:
+            return {"ok": False, "error": {
+                "code": 400, "message": f"查询字段 '{field}' 不存在", "data": None
+            }}
+        return {"ok": True, "entity_id": value, "query_field": field, "param_name_used": used}
 
     async def _handle_entity_update(
-        self,
-        entity: str,
-        entity_model,
-        field_definitions: Dict,
-        request: Request,
-        db,
-        api_id: str,
-        handler_config: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """处理实体更新"""
+        self, entity, entity_model, field_definitions, request, db, api_id, handler_config=None
+    ):
+        """先确认唯一记录再按主键更新，禁止标识误匹配时批量修改数据。"""
         from sqlalchemy import text
-        import json
-        import time
-        
+        from sqlalchemy.exc import IntegrityError
+        from app.services.entity_service import entity_service
+        from app.services.entity_storage import decode_record, storage_value
         try:
+            data = await request.json()
             lookup = self._resolve_entity_identifier(
-                entity=entity,
-                field_definitions=field_definitions,
-                request=request,
-                handler_config=handler_config,
+                entity=entity, field_definitions=field_definitions, request=request, handler_config=handler_config
             )
             if not lookup.get("ok"):
                 return lookup["error"]
+            value, field = lookup["entity_id"], lookup["query_field"]
+            table_sql = self._quote_identifier(self._build_entity_table_name(entity))
+            field_sql = self._quote_identifier(field)
+            rows = db.execute(text(
+                f"SELECT id FROM {table_sql} WHERE {field_sql} = :value LIMIT 2"
+            ), {"value": value}).all()
+            if not rows:
+                return {"code": 404, "message": "记录不存在", "data": None}
+            if len(rows) > 1:
+                return {"code": 409, "message": "标识匹配多条记录，请使用唯一字段", "data": None}
+            row = rows[0]
+            prepared = entity_service._prepare_record_data(entity_model, data, partial=True)
+            validation = entity_service._validate_record_data(entity_model, prepared, row[0], partial=True, db=db)
+            if not validation["valid"]:
+                return {"code": 400, "message": "数据验证失败", "data": {"errors": validation["errors"]}}
+            assignments, parameters, updated = [], {"record_id": row[0], "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}, []
+            for index, column in enumerate(entity_model.fields):
+                if column.name in prepared:
+                    assignments.append(f"{self._quote_identifier(column.name)} = :update_{index}")
+                    parameters[f"update_{index}"] = storage_value(column, prepared[column.name])
+                    updated.append(column.name)
+            if not assignments:
+                return {"code": 400, "message": "没有提供需要更新的字段", "data": None}
+            assignments.append("updated_at = :updated_at")
+            db.execute(text(
+                f"UPDATE {table_sql} SET {', '.join(assignments)} WHERE id = :record_id"
+            ), parameters)
+            result = db.execute(text(f"SELECT * FROM {table_sql} WHERE id = :id"), {"id": row[0]}).mappings().one()
+            return {"code": 200, "message": f"更新{entity_model.display_name}成功", "data": {
+                **decode_record(result, entity_model.fields), "query_field": field,
+                "entity": entity, "updated_fields": updated,
+            }}
+        except (ValueError, TypeError, IntegrityError) as exc:
+            db.rollback()
+            return {"code": 400, "message": f"数据验证失败: {exc}", "data": None}
+        except Exception:
+            db.rollback()
+            logger.exception("动态 API 更新记录失败")
+            return {"code": 500, "message": "更新业务记录失败", "data": None}
 
-            entity_id = lookup["entity_id"]
-            query_field = lookup["query_field"]
-            
-            # 获取更新数据
-            try:
-                if hasattr(request, '_json'):
-                    data = request._json
-                else:
-                    body = await request.body()
-                    data = json.loads(body) if body else {}
-            except:
-                data = {}
-            
-            table_name = self._build_entity_table_name(entity)
-            table_name_sql = self._quote_identifier(table_name)
-            safe_query_field = self._sanitize_sql_identifier(query_field)
-            
-            # 检查记录是否存在
-            check_query = text(
-                f"SELECT COUNT(*) as count FROM {table_name_sql} "
-                f"WHERE {self._quote_identifier(safe_query_field)} = :entity_id"
-            )
-            exists = db.execute(check_query, {"entity_id": entity_id}).fetchone()
-            
-            if not exists or exists[0] == 0:
-                return {
-                    "code": 404,
-                    "message": f"{entity_model.display_name}不存在",
-                    "data": None
-                }
-            
-            # 数据验证和转换
-            processed_data = {}
-            errors = []
-            
-            # 更新时间
-            processed_data['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-            
-            # 处理业务字段
-            for field_name, field_def in field_definitions.items():
-                if field_name not in data:
-                    continue  # 跳过未提供的字段
-                
-                value = data[field_name]
-                
-                # 数据类型转换和验证
-                if value is not None:
-                    try:
-                        if field_def.type == 'number':
-                            processed_data[field_name] = float(value)
-                        elif field_def.type == 'integer':
-                            processed_data[field_name] = int(value)
-                        elif field_def.type == 'json':
-                            if isinstance(value, (dict, list)):
-                                processed_data[field_name] = json.dumps(value)
-                            else:
-                                processed_data[field_name] = str(value)
-                        elif field_def.type == 'select' and field_def.options:
-                            if str(value) not in field_def.options:
-                                errors.append(f"字段 '{field_def.display_name}' 值不在允许范围内")
-                            else:
-                                processed_data[field_name] = str(value)
-                        else:
-                            processed_data[field_name] = str(value)
-                    except Exception as e:
-                        errors.append(f"字段 '{field_def.display_name}' 数据格式错误: {str(e)}")
-                else:
-                    processed_data[field_name] = None
-            
-            if errors:
-                return {
-                    "code": 400,
-                    "message": "数据验证失败",
-                    "data": {
-                        "errors": errors,
-                        "input_data": data
-                    }
-                }
-            
-            if not processed_data or processed_data == {'updated_at': processed_data['updated_at']}:
-                return {
-                    "code": 400,
-                    "message": "没有提供需要更新的字段",
-                    "data": None
-                }
-            
-            # 构建更新语句
-            set_clauses: List[str] = []
-            sql_params: Dict[str, Any] = {"entity_id": entity_id}
-            for idx, (col, val) in enumerate(processed_data.items()):
-                safe_col = self._sanitize_sql_identifier(col)
-                param_key = f"u_{idx}"
-                set_clauses.append(f"{self._quote_identifier(safe_col)} = :{param_key}")
-                sql_params[param_key] = val
-            
-            update_query = text(f"""
-                UPDATE {table_name_sql} 
-                SET {', '.join(set_clauses)} 
-                WHERE {self._quote_identifier(safe_query_field)} = :entity_id
-            """)
-            
-            # 执行更新
-            db.execute(update_query, sql_params)
-            db.commit()
-            
-            return {
-                "code": 200,
-                "message": f"更新{entity_model.display_name}成功",
-                "data": {
-                    "id": entity_id,
-                    "query_field": query_field,
-                    "entity": entity,
-                    "updated_at": processed_data['updated_at'],
-                    "updated_fields": list(processed_data.keys())
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ 更新失败: {e}")
-            return {
-                "code": 500,
-                "message": f"更新{entity}失败: {str(e)}",
-                "data": None
-            }
-
-    async def _handle_entity_delete(
-        self,
-        entity: str,
-        entity_model,
-        field_definitions: Dict,
-        request: Request,
-        db,
-        handler_config: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """处理实体删除"""
-        from sqlalchemy import text
-        
+    async def _handle_entity_delete(self, entity, entity_model, field_definitions, request, db, handler_config=None):
+        """只删除唯一匹配的记录，并在同一事务中原子更新计数。"""
+        from sqlalchemy import case, text, func
         try:
             lookup = self._resolve_entity_identifier(
-                entity=entity,
-                field_definitions=field_definitions,
-                request=request,
-                handler_config=handler_config,
+                entity=entity, field_definitions=field_definitions, request=request, handler_config=handler_config
             )
             if not lookup.get("ok"):
                 return lookup["error"]
+            value, field = lookup["entity_id"], lookup["query_field"]
+            table_sql = self._quote_identifier(self._build_entity_table_name(entity))
+            field_sql = self._quote_identifier(field)
+            rows = db.execute(text(
+                f"SELECT id FROM {table_sql} WHERE {field_sql} = :value LIMIT 2"
+            ), {"value": value}).all()
+            if not rows:
+                return {"code": 404, "message": "记录不存在", "data": None}
+            if len(rows) > 1:
+                return {"code": 409, "message": "标识匹配多条记录，请使用唯一字段", "data": None}
+            deleted = db.execute(text(
+                f"DELETE FROM {table_sql} WHERE id = :record_id"
+            ), {"record_id": rows[0][0]}).rowcount
+            if not deleted:
+                return {"code": 404, "message": "记录不存在", "data": None}
+            model = type(entity_model)
+            db.query(model).filter(model.id == entity_model.id).update({
+                model.record_count: case(
+                    (model.record_count >= deleted, model.record_count - deleted), else_=0
+                )
+            }, synchronize_session=False)
+            return {"code": 200, "message": f"删除{entity_model.display_name}成功", "data": {
+                "id": value, "query_field": field, "entity": entity,
+                "deleted_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            }}
+        except Exception:
+            db.rollback()
+            logger.exception("动态 API 删除记录失败")
+            return {"code": 500, "message": "删除业务记录失败", "data": None}
 
-            entity_id = lookup["entity_id"]
-            query_field = lookup["query_field"]
-            
-            table_name = self._build_entity_table_name(entity)
-            table_name_sql = self._quote_identifier(table_name)
-            safe_query_field = self._sanitize_sql_identifier(query_field)
-            
-            # 检查记录是否存在
-            check_query = text(
-                f"SELECT COUNT(*) as count FROM {table_name_sql} "
-                f"WHERE {self._quote_identifier(safe_query_field)} = :entity_id"
-            )
-            exists = db.execute(check_query, {"entity_id": entity_id}).fetchone()
-            
-            if not exists or exists[0] == 0:
-                return {
-                    "code": 404,
-                    "message": f"{entity_model.display_name}不存在",
-                    "data": None
-                }
-            
-            # 执行删除
-            delete_query = text(
-                f"DELETE FROM {table_name_sql} "
-                f"WHERE {self._quote_identifier(safe_query_field)} = :entity_id"
-            )
-            db.execute(delete_query, {"entity_id": entity_id})
-            db.commit()
-            
-            return {
-                "code": 200,
-                "message": f"删除{entity_model.display_name}成功",
-                "data": {
-                    "id": entity_id,
-                    "query_field": query_field,
-                    "entity": entity,
-                    "deleted_at": time.strftime('%Y-%m-%d %H:%M:%S')
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ 删除失败: {e}")
-            return {
-                "code": 500,
-                "message": f"删除{entity}失败: {str(e)}",
-                "data": None
-            }
-
-
-        
-        
 
 
 def get_dynamic_router() -> DynamicRouteHandler:

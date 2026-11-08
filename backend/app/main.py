@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from datetime import datetime
@@ -125,15 +126,18 @@ def create_app() -> FastAPI:
     
     # 初始化角色管理数据库
     logger.info("初始化角色管理数据库...")
-    init_role_database()
+    if not init_role_database():
+        raise RuntimeError("角色管理数据库初始化失败")
 
     # 初始化权限控制数据库
     logger.info("初始化权限控制数据库...")
-    init_permission_control_database()
+    if not init_permission_control_database():
+        raise RuntimeError("权限控制数据库初始化失败")
 
     # 初始化用户认证数据库
     logger.info("初始化用户认证数据库...")
-    init_user_database()
+    if not init_user_database():
+        raise RuntimeError("用户认证数据库初始化失败")
 
     # 注册路由 - 统一使用 /api/v1/ 前缀
     # 注意：具体路由必须在通配符路由之前注册，避免被拦截
@@ -177,7 +181,7 @@ def create_app() -> FastAPI:
         if isinstance(exc.detail, dict) and "meta" in exc.detail:
             return JSONResponse(
                 status_code=exc.status_code,
-                content=exc.detail
+                content=jsonable_encoder(exc.detail), headers=exc.headers
             )
         
         # 否则包装成统一格式
@@ -185,40 +189,27 @@ def create_app() -> FastAPI:
             status_code=exc.status_code,
             content={
                 "code": exc.status_code,
-                "message": exc.detail if isinstance(exc.detail, str) else exc.detail.get("message", "请求失败"),
+                "message": (exc.detail.get("message", "请求失败") if isinstance(exc.detail, dict) else str(exc.detail)),
                 "data": exc.detail if isinstance(exc.detail, dict) else None,
                 "meta": ResponseMeta().to_dict()
-            }
+            }, headers=exc.headers
         )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        """数据验证异常处理器 - 使用统一响应格式"""
+        """校验失败始终返回 422，不因 Pydantic 的异常对象无法序列化而变成 500。"""
         from app.core.response import ResponseMeta
-        
-        logger.warning(f"收到422验证错误: {request.method} {request.url}")
-        logger.warning(f"验证错误详情: {exc.errors()}")
-        
-        # 避免重复读取请求体导致ClientDisconnect错误
-        try:
-            body = await request.body()
-            logger.debug(f"请求体: {body}")
-        except Exception as e:
-            logger.debug(f"请求体读取失败: {str(e)}")
-
-        return JSONResponse(
-            status_code=422,
-            content={
-                "code": 422,
-                "message": "数据验证失败",
-                "data": {
-                    "error": "validation_error",
-                    "details": exc.errors(),
-                    "suggestion": "请检查请求参数格式"
-                },
-                "meta": ResponseMeta().to_dict()
-            }
-        )
+        errors = exc.errors()
+        logger.warning("请求参数验证失败: %s %s，字段: %s",
+                       request.method, request.url.path, [error.get("loc") for error in errors])
+        # 请求体已经由 FastAPI 消费，不再次读取；也不把密码等原始输入写入日志。
+        content = {
+            "code": 422,
+            "message": "数据验证失败",
+            "data": {"error": "validation_error", "details": errors, "suggestion": "请检查请求参数格式"},
+            "meta": ResponseMeta().to_dict(),
+        }
+        return JSONResponse(status_code=422, content=jsonable_encoder(content, custom_encoder={Exception: str}))
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):

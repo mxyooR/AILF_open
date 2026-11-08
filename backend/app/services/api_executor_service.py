@@ -9,6 +9,9 @@ API 执行服务 - 工作流节点的业务 API 调用
 import json
 import re
 import httpx
+from urllib.parse import quote
+from app.config import settings
+from app.services.workflow_context import response_error
 from typing import Dict, Any, Optional, List
 from app.core.logging_config import get_logger
 from app.core.database import get_db_session
@@ -17,7 +20,7 @@ from app.models.api_route import APIRouteDBModel
 logger = get_logger(__name__)
 
 # 内部 API 调用的基础 URL
-INTERNAL_API_BASE_URL = "http://127.0.0.1:5000"
+INTERNAL_API_BASE_URL = f"http://127.0.0.1:{settings.PORT}"
 
 
 class APIExecutorService:
@@ -136,183 +139,13 @@ class APIExecutorService:
         """
         result = endpoint
         for key, value in params.items():
-            result = result.replace(f"{{{key}}}", str(value))
+            if value is not None:
+                result = result.replace(f"{{{key}}}", quote(str(value), safe=""))
         return result
     
-    def _resolve_template_variables(
-        self,
-        value: Any,
-        session_data: Dict[str, Any]
-    ) -> Any:
-        """
-        解析模板变量
-        
-        支持的格式：
-        - ${field_name} -> 从 session_data 中获取 field_name（优先）
-        - ${input.field_name} -> 从 session_data 中获取 field_name
-        - ${node_id_result.field} -> 从之前节点的结果中获取
-        - ${last_api_result.field} -> 从最近一次 API 结果中获取
-        
-        Args:
-            value: 要解析的值（可以是字符串、字典或列表）
-            session_data: 会话数据
-        
-        Returns:
-            解析后的值
-        """
-        if isinstance(value, str):
-            # 匹配 ${...} 格式的模板变量
-            pattern = r'\$\{([^}]+)\}'
-            
-            def replace_var(match):
-                var_path = match.group(1)
-                original = match.group(0)
-                
-                logger.debug(f"[APIExec] 解析模板变量: {var_path}, session_data keys: {list(session_data.keys())}")
-
-                def _resolve_from_dict(field_name: Optional[str], data: Any) -> Optional[Any]:
-                    """Try direct field and prefix-stripped alias (e.g., passenger_name -> name)."""
-                    if not field_name or not isinstance(data, dict):
-                        return None
-                    if field_name in data:
-                        return data.get(field_name)
-                    if "_" in field_name:
-                        alias_name = field_name.split("_", 1)[1]
-                        if alias_name in data:
-                            logger.debug(f"[APIExec] 别名映射 {field_name} -> {alias_name} = {data.get(alias_name)}")
-                            return data.get(alias_name)
-                    return None
-                
-                # 1. 处理 input.xxx 格式（兼容旧格式）
-                if var_path.startswith("input."):
-                    field_name = var_path[6:]  # 去掉 "input." 前缀
-                    if field_name in session_data:
-                        resolved_value = session_data[field_name]
-                        logger.debug(f"[APIExec] 解析 input.{field_name} = {resolved_value}")
-                        return str(resolved_value) if resolved_value is not None else original
-                    logger.debug(f"[APIExec] 未找到 input.{field_name}")
-                    return original
-                
-                # 2. 处理 xxx_result.yyy 格式（之前节点的结果）
-                if "_result." in var_path:
-                    parts = var_path.split(".", 1)
-                    result_key = parts[0]
-                    field_name = parts[1] if len(parts) > 1 else None
-                    
-                    result_data = session_data.get(result_key, {})
-                    if field_name and isinstance(result_data, dict):
-                        if field_name in result_data:
-                            resolved_value = result_data[field_name]
-                            logger.debug(f"[APIExec] 解析 {result_key}.{field_name} = {resolved_value}")
-                            return str(resolved_value) if resolved_value is not None else original
-                    elif result_data:
-                        logger.debug(f"[APIExec] 解析 {result_key} = {result_data}")
-                        return str(result_data)
-                    logger.debug(f"[APIExec] 未找到 {var_path}")
-                    return original
-                
-                # 3. 处理 last_api_result.xxx 格式
-                if var_path.startswith("last_api_result."):
-                    field_name = var_path[16:]  # 去掉 "last_api_result." 前缀
-                    last_result = session_data.get("last_api_result", {})
-                    if isinstance(last_result, dict) and field_name in last_result:
-                        resolved_value = last_result[field_name]
-                        logger.debug(f"[APIExec] 解析 last_api_result.{field_name} = {resolved_value}")
-                        return str(resolved_value) if resolved_value is not None else original
-                    logger.debug(f"[APIExec] 未找到 last_api_result.{field_name}")
-                    return original
-                
-                # 4. 处理 namespace.field 格式的别名映射（通用机制）
-                # 例如：${train_query.train_number} -> 如果没有 train_query 对象，但有 train_number 字段
-                if "." in var_path:
-                    parts = var_path.split(".", 1)
-                    namespace = parts[0]
-                    field_name = parts[1] if len(parts) > 1 else None
-                    
-                    # 先尝试从命名空间对象中获取
-                    namespace_data = session_data.get(namespace)
-                    if isinstance(namespace_data, dict):
-                        resolved_value = _resolve_from_dict(field_name, namespace_data)
-                        if resolved_value is not None:
-                            logger.debug(f"[APIExec] 解析 {namespace}.{field_name} = {resolved_value}")
-                            return str(resolved_value) if resolved_value is not None else original
-
-                    # 尝试从 *_result 命名空间中解析（如 n_passenger_verification_result）
-                    candidate_keys = [f"{namespace}_result", f"n_{namespace}_result"]
-                    for candidate_key in candidate_keys:
-                        candidate_data = session_data.get(candidate_key)
-                        if isinstance(candidate_data, dict):
-                            resolved_value = _resolve_from_dict(field_name, candidate_data)
-                            if resolved_value is not None:
-                                logger.debug(
-                                    f"[APIExec] 别名映射 {namespace}.{field_name} -> {candidate_key}.{field_name} = {resolved_value}"
-                                )
-                                return str(resolved_value) if resolved_value is not None else original
-
-                    # 再兜底：查找任意以 <namespace>_result 结尾的结果
-                    suffix = f"{namespace}_result"
-                    for key, value in session_data.items():
-                        if key.endswith(suffix) and isinstance(value, dict):
-                            resolved_value = _resolve_from_dict(field_name, value)
-                            if resolved_value is not None:
-                                logger.debug(
-                                    f"[APIExec] 别名映射 {namespace}.{field_name} -> {key}.{field_name} = {resolved_value}"
-                                )
-                                return str(resolved_value) if resolved_value is not None else original
-
-                    # 别名映射：如果命名空间不存在，但字段存在于根级别，则使用根级别的值
-                    if field_name and field_name in session_data:
-                        resolved_value = session_data[field_name]
-                        logger.debug(f"[APIExec] 别名映射 {namespace}.{field_name} -> {field_name} = {resolved_value}")
-                        return str(resolved_value) if resolved_value is not None else original
-
-                    # 根级别前缀别名：foo_bar -> bar
-                    resolved_value = _resolve_from_dict(field_name, session_data)
-                    if resolved_value is not None:
-                        logger.debug(f"[APIExec] 别名映射 {namespace}.{field_name} -> {field_name} = {resolved_value}")
-                        return str(resolved_value) if resolved_value is not None else original
-
-                    logger.debug(f"[APIExec] 未找到 {var_path}（命名空间或字段不存在）")
-                    return original
-                
-                # 5. 直接从 session_data 获取（最常用的格式：${field_name}）
-                if var_path in session_data:
-                    resolved_value = session_data[var_path]
-                    logger.debug(f"[APIExec] 解析 {var_path} = {resolved_value}")
-                    return str(resolved_value) if resolved_value is not None else original
-
-                # 6. 回退：从 last_api_result 或任意 *_result 中查找同名字段
-                last_result = session_data.get("last_api_result")
-                if isinstance(last_result, dict) and var_path in last_result:
-                    resolved_value = last_result[var_path]
-                    logger.debug(f"[APIExec] 回退解析 last_api_result.{var_path} = {resolved_value}")
-                    return str(resolved_value) if resolved_value is not None else original
-
-                for key, value in session_data.items():
-                    if key.endswith("_result") and isinstance(value, dict) and var_path in value:
-                        resolved_value = value[var_path]
-                        logger.debug(f"[APIExec] 回退解析 {key}.{var_path} = {resolved_value}")
-                        return str(resolved_value) if resolved_value is not None else original
-                
-                logger.debug(f"[APIExec] 未找到变量: {var_path}")
-                return original
-            
-            resolved = re.sub(pattern, replace_var, value)
-            
-            # 如果整个字符串都是模板变量且解析后仍是原样，返回 None
-            template_pattern = r'^\$\{[^}]+\}$'
-            if resolved == value and re.match(template_pattern, value):
-                return None
-            
-            return resolved
-        
-        elif isinstance(value, dict):
-            return {k: self._resolve_template_variables(v, session_data) for k, v in value.items()}
-        
-        elif isinstance(value, list):
-            return [self._resolve_template_variables(item, session_data) for item in value]
-        
-        return value
+    def _resolve_template_variables(self, value, session_data):
+        from app.services.workflow_context import resolve_templates
+        return resolve_templates(value, session_data)
 
     async def execute_api(
         self,
@@ -336,7 +169,7 @@ class APIExecutorService:
         api_id = node_config.get("api_id")
         api_endpoint = node_config.get("api_endpoint")
         method = node_config.get("method", "GET").upper()
-        parameters = node_config.get("parameters", {})
+        parameters = node_config.get("parameters") or {}
         
         logger.info(f"🔍 [APIExec] 执行 API 调用: api_id={api_id}, endpoint={api_endpoint}, method={method}")
         logger.debug(f"📦 [APIExec] 会话数据: {json.dumps(session_data, ensure_ascii=False, default=str)[:500]}")
@@ -380,8 +213,13 @@ class APIExecutorService:
                 "method": method
             }
         
+        if route_config.get("status") and str(route_config["status"]).lower() != "active":
+            return {"success": False, "error": "业务 API 尚未启用", "data": None}
+
         # 3. 准备请求参数
-        endpoint = route_config.get("endpoint", api_endpoint)
+        endpoint = route_config.get("endpoint") or api_endpoint
+        if not isinstance(endpoint, str) or not endpoint.startswith("/") or endpoint.startswith("//"):
+            return {"success": False, "error": "业务 API 必须使用已配置的本地路径", "data": None}
         http_method = route_config.get("method", method).upper()
         route_parameters_config = route_config.get("parameters_config") or []
         
@@ -435,8 +273,31 @@ class APIExecutorService:
             # 尝试从会话数据中查找
             for key, value in session_data.items():
                 if f"{{{key}}}" in actual_endpoint:
-                    actual_endpoint = actual_endpoint.replace(f"{{{key}}}", str(value))
+                    if value is not None:
+                        actual_endpoint = actual_endpoint.replace(f"{{{key}}}", quote(str(value), safe=""))
         
+        if "{" in actual_endpoint or "${" in actual_endpoint:
+            return {"success": False, "error": "业务 API 缺少路径参数", "data": None}
+        request_params = {key: value for key, value in request_params.items() if key not in path_param_keys}
+        query_keys = {
+            item["name"] for item in route_parameters_config
+            if isinstance(item, dict) and item.get("name")
+            and (item.get("location") or item.get("in")) == "query"
+        }
+        # 路由声明的位置决定参数传输方式，避免把请求头或查询参数塞进 JSON 请求体。
+        locations = {
+            item["name"]: item.get("location") or item.get("in") or "body"
+            for item in route_parameters_config if isinstance(item, dict) and item.get("name")
+        }
+        header_params = {key: request_params.pop(key) for key in list(request_params) if locations.get(key) == "header"}
+        query_params = {}
+        if http_method in {"POST", "PUT", "PATCH"}:
+            query_params = {key: request_params.pop(key) for key in list(request_params) if key in query_keys}
+        elif http_method == "DELETE":
+            # DELETE 保持旧接口的 query 默认行为，同时支持明确声明的 body 字段。
+            body_params = {key: request_params.pop(key) for key in list(request_params) if locations.get(key) == "body"}
+            query_params, request_params = request_params, body_params
+
         logger.info(f"🚀 [APIExec] 准备调用: {http_method} {actual_endpoint}")
         logger.debug(f"📋 [APIExec] 最终请求参数: {json.dumps(request_params, ensure_ascii=False, default=str)}")
         
@@ -446,8 +307,15 @@ class APIExecutorService:
                 method=http_method,
                 endpoint=actual_endpoint,
                 params=request_params,
-                token=user_token
+                token=user_token,
+                query_params=query_params,
+                header_params=header_params,
             )
+
+            business_error = response_error(result)
+            if business_error:
+                return {"success": False, "error": business_error, "data": result,
+                        "api_id": api_id, "endpoint": actual_endpoint, "method": http_method}
 
             # 文件型政策接口兜底补齐分支字段，避免工作流条件因缺少字段提前结束
             if isinstance(result, dict) and result.get("media_kind") in {"pdf", "file"}:
@@ -488,7 +356,9 @@ class APIExecutorService:
         method: str,
         endpoint: str,
         params: Dict[str, Any],
-        token: str = None
+        token: str = None,
+        query_params: Optional[Dict[str, Any]] = None,
+        header_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         执行实际的 HTTP 请求
@@ -510,29 +380,38 @@ class APIExecutorService:
             # 允许文件流响应（PDF/图片/音频等）
             "Accept": "*/*"
         }
+        headers.update({str(key): str(value) for key, value in (header_params or {}).items()
+                        if str(key).lower() != "authorization" and value is not None})
         if token:
             headers["Authorization"] = f"Bearer {token}"
         
         # 添加详细日志
         logger.info(f"🌐 [APIExec] HTTP 请求: {method} {endpoint}")
-        logger.debug(f"📤 [APIExec] 请求头: {json.dumps({k: v[:20] + '...' if k == 'Authorization' and len(v) > 20 else v for k, v in headers.items()}, ensure_ascii=False)}")
+        logger.debug(f"📤 [APIExec] 请求头: {json.dumps({k: '[redacted]' if k == 'Authorization' else v for k, v in headers.items()}, ensure_ascii=False)}")
         logger.debug(f"📤 [APIExec] 请求参数: {json.dumps(params, ensure_ascii=False, default=str)}")
         
         # 根据方法类型发送请求
         try:
-            if method == "GET":
+            if method == "HEAD":
+                response = await client.head(endpoint, params=params, headers=headers)
+            elif method == "GET":
                 response = await client.get(endpoint, params=params, headers=headers)
             elif method == "POST":
                 logger.debug(f"[APIExec] POST 请求体: {json.dumps(params, ensure_ascii=False, default=str)}")
-                response = await client.post(endpoint, json=params, headers=headers)
+                response = await client.post(endpoint, json=params, params=query_params, headers=headers)
             elif method == "PUT":
                 logger.debug(f"[APIExec] PUT 请求体: {json.dumps(params, ensure_ascii=False, default=str)}")
-                response = await client.put(endpoint, json=params, headers=headers)
+                response = await client.put(endpoint, json=params, params=query_params, headers=headers)
             elif method == "DELETE":
-                response = await client.delete(endpoint, params=params, headers=headers)
+                response = await client.request(
+                    "DELETE", endpoint, params=params if query_params is None else query_params,
+                    json=params if query_params is not None and params else None, headers=headers,
+                )
+            elif method == "OPTIONS":
+                response = await client.options(endpoint, params=params, headers=headers)
             elif method == "PATCH":
                 logger.debug(f"[APIExec] PATCH 请求体: {json.dumps(params, ensure_ascii=False, default=str)}")
-                response = await client.patch(endpoint, json=params, headers=headers)
+                response = await client.patch(endpoint, json=params, params=query_params, headers=headers)
             else:
                 raise ValueError(f"不支持的 HTTP 方法: {method}")
             
@@ -554,6 +433,9 @@ class APIExecutorService:
                 logger.error(f"❌ [APIExec] HTTP 请求失败: {response.status_code} - {error_text[:200]}")
                 raise Exception(f"HTTP {response.status_code}: {error_text[:200]}")
             
+            # HEAD 和 204/205 成功响应没有正文，不尝试把空字节解析为 JSON。
+            if method == "HEAD" or response.status_code in {204, 205} or not response.content:
+                return {"code": response.status_code, "data": None}
             if self._is_json_content_type(content_type):
                 # JSON 响应
                 response_data = response.json()

@@ -215,18 +215,28 @@ class AIServiceSimple:
             return self._create_error_response(f"获取工作流详情失败: {workflow_id}")
         
         workflow_data = wf_result["data"]["workflow"]
-        nodes = workflow_data.get("nodes", [])
-        
-        # 找到第一个业务节点（跳过 start 节点）
-        first_node = None
-        for node in nodes:
-            if node.get("type") not in ("start", "end"):
-                first_node = node
-                break
-        
-        if not first_node:
-            return self._create_error_response("工作流没有有效的业务节点")
-        
+        try:
+            # 按开始节点的实际出边找入口，节点数组顺序只决定编辑器展示顺序。
+            session = await self._check_and_create_workflow_session(
+                user_id, workflow_id, workflow_data, first_node_id=None
+            )
+        except (ValueError, RuntimeError) as exc:
+            return self._create_error_response(str(exc))
+        first_node = next(node for node in session.workflow_data["nodes"] if node["id"] == session.current_step)
+        run_context = {**context, "user_id": user_id, "action": "next", "instance_id": session.id}
+        automatic = (
+            first_node["type"] in {"start", "condition", "end"}
+            or (first_node["type"] == "api_call" and self.workflow_executor._should_auto_run_api_call(
+                first_node, session.step_data
+            ))
+            or (first_node["type"] == "notification" and self.workflow_executor._should_auto_run_notification(first_node))
+        )
+        if automatic:
+            result = await self.workflow_executor.execute_step(
+                user_id, workflow_id, session.current_step, {}, run_context
+            )
+            return {**result.to_ai_response(), "intent": intent_result}
+
         logger.info(f"🤖 第二轮：AI 槽填充...")
         
         # 🔥 调用 AI 进行第二轮槽填充
@@ -249,14 +259,10 @@ class AIServiceSimple:
             slot_values=slot_values  # 🔥 传递 AI 槽位值
         )
         
-        # 创建工作流会话
-        await self._check_and_create_workflow_session(
-            user_id=user_id,
-            workflow_id=workflow_id,
-            workflow_data=workflow_data,
-            first_node_id=first_node.get("id")
-        )
-        
+        # 入口表单也绑定实例，重新开始后旧入口不能把数据写入新会话。
+        from app.services.workflow_context import bind_workflow_schema
+        schema = bind_workflow_schema(schema, session, first_node["id"])
+
         return {
             "success": True,
             "amis_schema": schema,
@@ -590,50 +596,27 @@ class AIServiceSimple:
         }
     
     async def _check_and_create_workflow_session(
-        self,
-        user_id: str,
-        workflow_id: str,
-        workflow_data: Dict,
-        first_node_id: str
+        self, user_id: str, workflow_id: str, workflow_data: Dict, first_node_id: Optional[str] = None
     ):
-        """创建工作流会话。
-
-        规则：当用户通过自然语言再次命中某个工作流时，视为“重新开始该流程”。
-        因此若存在活跃会话，先结束旧会话再创建新会话，避免历史 step_data 污染。
-        """
-        try:
-            # 新命中工作流时强制重建会话，避免复用旧会话导致跳步/脏数据
-            existing_session = workflow_session_service.get_active_session(user_id)
-            if existing_session:
-                logger.info(
-                    f"♻️ 检测到用户{user_id}已有活跃会话({existing_session.workflow_id})，"
-                    f"将重建为新会话({workflow_id})"
-                )
-                workflow_session_service.end_session(user_id, "cancelled")
-            
-            # 创建工作流会话
-            logger.info(f"为用户{user_id}创建工作流会话: {workflow_data.get('name')}")
-            session = workflow_session_service.create_session(
-                user_id=user_id,
-                workflow_id=workflow_id,
-                workflow_data=workflow_data
-            )
-            
-            # 设置当前步骤为第一个节点
-            if first_node_id:
-                workflow_session_service.update_session_step(
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    new_step=first_node_id,
-                    step_data={}
-                )
-            
-            logger.info(f"✅ 工作流会话创建成功: {session.workflow_id}, current_step={session.current_step}")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ 创建工作流会话失败: {str(e)}")
-            import traceback
-            logger.warning(traceback.format_exc())
+        """自然语言重新触发时创建新实例，并与表单提交共用同一把执行锁。"""
+        from app.services.workflow_graph import normalize_nodes
+        from app.services.workflow_service import normalize_status
+        from app.services.workflow_session_service import WorkflowSession
+        if normalize_status(workflow_data.get("status")) != "ACTIVE":
+            raise ValueError("工作流尚未启用")
+        validated = {**workflow_data, "nodes": normalize_nodes(workflow_data.get("nodes"), executable=True)}
+        # 开始节点的连线可能全不满足条件；先计算入口，失败时保留原来的可用流程。
+        preview = WorkflowSession(user_id, workflow_id, validated)
+        entry = workflow_session_service.get_next_step_for_session(preview)
+        if entry is None:
+            raise ValueError("开始节点没有满足条件的入口")
+        if first_node_id is not None and first_node_id != entry:
+            raise ValueError("入口节点与工作流开始节点的连线不一致")
+        async with workflow_session_service.execution_lock(user_id):
+            session = workflow_session_service.create_session(user_id, workflow_id, validated)
+            if not workflow_session_service.update_session_step(user_id, workflow_id, entry):
+                raise RuntimeError("工作流状态已发生变化，请重新开始")
+            return workflow_session_service.get_active_session(user_id)
 
     async def _generate_slot_values_for_workflow(
         self,
@@ -917,7 +900,7 @@ class AIServiceSimple:
                     logger.info("用户没有活跃的工作流会话，转为正常命令处理")
                     accessible_apis = context.get("accessible_apis", [])
                     workflows = workflow_service.get_active_workflows_for_ai()
-                    return await self.amis_service.generate_schema(
+                    return await self.ai_amis_service.generate_schema(
                         command=command,
                         accessible_apis=accessible_apis,
                         workflows=workflows
@@ -939,7 +922,7 @@ class AIServiceSimple:
             logger.error(f"❌ 处理工作流推进失败: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-            return self.amis_service.create_error_response(
+            return self.ai_amis_service.create_error_response(
                 f"工作流推进失败: {str(e)}",
                 "工作流错误"
             )

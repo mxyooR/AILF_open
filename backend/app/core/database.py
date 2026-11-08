@@ -1,8 +1,9 @@
 """
 数据库连接和会话管理
 """
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from contextlib import contextmanager
@@ -14,30 +15,30 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# 配置日志 - 设置为INFO级别以显示推理日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s:%(name)s:%(message)s'
-)
-logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)  # 只显示警告和错误
+def create_database_engine(url):
+    """按数据库类型配置引擎，让隔离测试复用生产环境的事务和会话代码。"""
+    backend = make_url(url).get_backend_name()
+    if backend == "sqlite":
+        options = {"connect_args": {"check_same_thread": False}}
+        if make_url(url).database in (None, "", ":memory:"):
+            options["poolclass"] = StaticPool
+        created = create_engine(url, pool_pre_ping=True, **options)
 
-# 创建数据库引擎 - 优化连接池配置
-engine = create_engine(
-    settings.DATABASE_URL,
-    echo=False,  # 关闭SQL语句显示
-    pool_pre_ping=True,   # 连接池预检查
-    pool_recycle=3600,    # 连接回收时间（1小时）
-    pool_size=20,         # 连接池大小
-    max_overflow=30,      # 最大溢出连接数
-    pool_timeout=30,      # 获取连接超时时间
-    connect_args={
-        "charset": "utf8mb4",
-        "autocommit": False,
-        "connect_timeout": 10,
-        "read_timeout": 30,
-        "write_timeout": 30,
-    }
-)
+        @event.listens_for(created, "connect")
+        def enable_foreign_keys(connection, _):
+            # SQLite 默认不检查外键；启用后回归测试才能发现孤立元数据。
+            connection.execute("PRAGMA foreign_keys=ON")
+        return created
+    options = dict(pool_pre_ping=True, pool_recycle=3600, pool_size=20, max_overflow=30, pool_timeout=30)
+    if backend == "mysql":
+        options["connect_args"] = {
+            "charset": "utf8mb4", "autocommit": False, "connect_timeout": 10,
+            "read_timeout": 30, "write_timeout": 30,
+        }
+    return create_engine(url, echo=False, **options)
+
+
+engine = create_database_engine(settings.DATABASE_URL)
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -46,7 +47,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # 元数据
-metadata = MetaData()
+metadata = Base.metadata
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -57,6 +58,9 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -88,17 +92,13 @@ def get_db_session() -> Generator[Session, None, None]:
 
 def create_tables():
     """创建所有表"""
-    # 导入所有模型以确保它们被注册
-    # 注意：EntityRecordDBModel已废弃，实体数据现在存储在独立的entity_{name}表中
-    from app.models.scenario import ScenarioDBModel
-    from app.models.entity import EntityDBModel, EntityFieldDBModel, EntityRelationshipDBModel
-    from app.models.workflow import WorkflowDBModel
+    import app.models  # 先注册所有模型，确保建表时能解析外键依赖。
 
     Base.metadata.create_all(bind=engine)
 
 
 def ensure_entity_field_aliases_column():
-    """Ensure entity_fields.aliases column exists (for field alias mapping)."""
+    """兼容旧数据库，补齐实体字段的 aliases 列，供字段别名映射使用。"""
     from sqlalchemy import inspect, text
     with engine.begin() as conn:
         inspector = inspect(conn)
@@ -158,7 +158,7 @@ class DatabaseManager:
         """优化数据库连接"""
         try:
             # 清理无效连接
-            self._engine.pool.recreate()
+            self._engine.dispose()
             return {"status": "optimized", "message": "连接池已重新创建"}
         except Exception as e:
             return {"status": "failed", "error": str(e)}

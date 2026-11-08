@@ -10,6 +10,7 @@ from .end_strategy import EndNodeStrategy
 from .condition_strategy import ConditionNodeStrategy
 from .notification_strategy import NotificationNodeStrategy
 from .chart_strategy import ChartStrategy
+from .user_input_strategy import UserInputStrategy
 
 __all__ = [
     'NodeStrategy',
@@ -18,5 +19,6 @@ __all__ = [
     'EndNodeStrategy',
     'ConditionNodeStrategy',
     'NotificationNodeStrategy',
-    'ChartStrategy'
+    'ChartStrategy',
+    'UserInputStrategy'
 ]

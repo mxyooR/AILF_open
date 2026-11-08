@@ -2,8 +2,8 @@
 工作流相关的Pydantic模型 (AI指导版)
 包括请求和响应模型，专门为AI提供业务流程指导
 """
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import List, Optional, Dict, Any, Union, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -15,6 +15,13 @@ class WorkflowStatus(str, Enum):
     INACTIVE = "inactive"
     ARCHIVED = "archived"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return next((item for item in cls if item.value == normalized), None)
+        return None
+
 
 class NodeType(str, Enum):
     """节点类型枚举 (AI指导版)"""
@@ -24,11 +31,13 @@ class NodeType(str, Enum):
     CONDITION = "condition"
     NOTIFICATION = "notification"
     END = "end"
+    CHART = "chart"
 
 
 class ConditionType(str, Enum):
     """条件类型枚举"""
     ALWAYS = "always"
+    NEVER = "never"
     EXPRESSION = "expression"
     FORM_COMPLETED = "form_completed"
 
@@ -63,12 +72,13 @@ class ExecutionStatus(str, Enum):
 # 基础模型
 class Position(BaseModel):
     """位置坐标"""
-    x: int = Field(..., description="X坐标")
-    y: int = Field(..., description="Y坐标")
+    x: float = Field(..., allow_inf_nan=False, description="X坐标")
+    y: float = Field(..., allow_inf_nan=False, description="Y坐标")
 
 
 class WorkflowInput(BaseModel):
     """工作流输入定义"""
+    model_config = ConfigDict(extra="allow")
     name: str = Field(..., description="输入名称")
     type: str = Field(..., description="输入类型")
     description: str = Field(..., description="输入描述")
@@ -78,15 +88,23 @@ class WorkflowInput(BaseModel):
 
 class NodeCondition(BaseModel):
     """节点转换条件"""
-    type: ConditionType = Field(..., description="条件类型")
+    model_config = ConfigDict(extra="allow")
+    type: Optional[ConditionType] = Field(None, description="条件类型")
     expression: Optional[str] = Field(None, description="条件表达式")
-    description: str = Field(..., description="条件描述")
+    description: str = Field("", description="条件描述")
 
 
 class ChildNode(BaseModel):
     """子节点配置"""
     node_id: str = Field(..., description="子节点ID")
-    condition: NodeCondition = Field(..., description="转换条件")
+    condition: Optional[NodeCondition] = Field(None, description="转换条件")
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_id(cls, value):
+        if isinstance(value, str):
+            return {"node_id": value, "condition": {"type": "always"}}
+        return value
 
 
 class NodeOutput(BaseModel):
@@ -98,6 +116,7 @@ class NodeOutput(BaseModel):
 
 class AIInstructions(BaseModel):
     """AI执行指令"""
+    model_config = ConfigDict(extra="allow")
     purpose: Optional[str] = Field("", description="节点目的")
     action: Optional[str] = Field("", description="执行动作")
     user_message: Optional[str] = Field("", description="用户消息")
@@ -110,6 +129,7 @@ class AIInstructions(BaseModel):
 
 class WorkflowMetadata(BaseModel):
     """工作流元数据"""
+    model_config = ConfigDict(extra="allow")
     tags: List[str] = Field([], description="标签列表")
     complexity: ComplexityLevel = Field(ComplexityLevel.MEDIUM, description="复杂度级别")
 
@@ -124,12 +144,13 @@ class Progress(BaseModel):
 # 节点相关模型
 class NodeConfig(BaseModel):
     """节点配置"""
+    model_config = ConfigDict(extra="allow")
     # API调用配置
     api_id: Optional[str] = Field(None, description="API标识符")
     api_endpoint: Optional[str] = Field(None, description="API端点")
     method: Optional[str] = Field(None, description="HTTP方法")
     parameters: Optional[Dict[str, Any]] = Field(None, description="API参数")
-    ui_mode: Optional[str] = Field(None, description="UI模式(auto/form)")
+    ui_mode: Optional[Literal["auto", "form"]] = Field(None, description="UI模式(auto/form)")
     context_fields: Optional[List[str]] = Field(None, description="上下文展示白名单")
 
     # 用户输入配置
@@ -143,9 +164,31 @@ class NodeConfig(BaseModel):
     message_template: Optional[str] = Field(None, description="消息模板")
     recipients: Optional[List[str]] = Field(None, description="接收者列表")
 
+    @field_validator("method")
+    @classmethod
+    def normalize_method(cls, value):
+        if value is None:
+            return value
+        value = value.upper()
+        if value not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            raise ValueError("不支持的 HTTP 方法")
+        return value
 
-class WorkflowNodeCreate(BaseModel):
+
+class _LegacyNodeLinks(BaseModel):
+    """旧 nextSteps 只在 child_nodes 未提供时导入，明确清空连线必须保留为空。"""
+
+    @model_validator(mode="before")
+    @classmethod
+    def import_legacy_links(cls, value):
+        if isinstance(value, dict) and "child_nodes" not in value and "nextSteps" in value:
+            return {**value, "child_nodes": value["nextSteps"]}
+        return value
+
+
+class WorkflowNodeCreate(_LegacyNodeLinks):
     """创建工作流节点请求"""
+    model_config = ConfigDict(extra="allow")
     id: str = Field(..., description="节点ID")
     name: str = Field(..., description="节点名称")
     description: Optional[str] = Field(None, description="节点描述")
@@ -158,7 +201,7 @@ class WorkflowNodeCreate(BaseModel):
     ai_instructions: Optional[AIInstructions] = Field(None, description="AI执行指令")
 
 
-class WorkflowNode(BaseModel):
+class WorkflowNode(_LegacyNodeLinks):
     """工作流节点"""
     id: str = Field(..., description="节点ID")
     name: str = Field(..., description="节点名称")
@@ -293,8 +336,9 @@ class WorkflowInstanceListItem(BaseModel):
 
 
 # 节点管理相关模型
-class WorkflowNodeCreateRequest(BaseModel):
+class WorkflowNodeCreateRequest(_LegacyNodeLinks):
     """添加工作流节点请求"""
+    model_config = ConfigDict(extra="allow")
     id: str = Field(..., description="节点ID")
     name: str = Field(..., description="节点名称")
     description: Optional[str] = Field(None, description="节点描述")
@@ -307,8 +351,9 @@ class WorkflowNodeCreateRequest(BaseModel):
     ai_instructions: Optional[AIInstructions] = Field(None, description="AI执行指令")
 
 
-class WorkflowNodeUpdateRequest(BaseModel):
+class WorkflowNodeUpdateRequest(_LegacyNodeLinks):
     """更新工作流节点请求"""
+    model_config = ConfigDict(extra="allow")
     name: Optional[str] = Field(None, description="节点名称")
     description: Optional[str] = Field(None, description="节点描述")
     type: Optional[NodeType] = Field(None, description="节点类型")

@@ -1,13 +1,13 @@
 # 验证记录
 
-验证日期：2026-11-08。本记录包括演示、开源内容清理、异步命令运行时和工作流前端改动。所有数字均为实际执行结果；后端离线测试是此前记录，本轮工作流只修改前端。
+验证日期：2026-11-08。本记录包括演示、开源内容清理、异步命令运行时、工作流编辑器，以及后端工作流与实体数据库修复。所有数字均为实际执行结果；此前前端检查和本次后端检查分别记录。
 
 ## 环境与执行范围
 
 - Windows，Node.js 24.21.0，TypeScript 4.9.5，Python 3.12.11。
 - 复用已有前端依赖和 Python 环境；前端源码副本、构建与日志位于原项目的本地验证目录，未为开源副本再次安装依赖。
-- 后端离线测试不导入应用启动入口，不连接业务数据库、Redis 或 GPU。Redis 行为通过异步替身验证。
-- CI 配置使用 Ubuntu、Node.js 20 和 Python 3.11；远端运行状态以 [GitHub Actions](https://github.com/mxyooR/AILF_open/actions/workflows/ci.yml) 为准。
+- 原有 19 项后端离线测试不导入应用启动入口。新增回归在隔离 SQLite 中执行真实事务，通过 ASGI 导入并执行应用 HTTP 路由；启动初始化、模型和登录令牌使用替身，不读取本地 `.env`。
+- 默认回归不连接业务 MySQL、Redis 或 GPU。单独的后端 CI 使用 Python 3.12、临时 MySQL 8 和 Redis 7；原有前端 CI 使用 Node.js 20，其他离线检查使用 Python 3.11。远端状态以 [GitHub Actions](https://github.com/mxyooR/AILF_open/actions) 为准。
 
 ## 已执行检查
 
@@ -16,6 +16,7 @@
 | TypeScript `tsc --noEmit` | 通过 | 全量前端类型检查 |
 | 前端 Jest | 5 个测试文件、32 项通过 | 场景与本地请求 10 项、异步命令 5 项、工作流画布 / 节点编辑 / 图关系回归 17 项 |
 | 后端 `unittest` | 19 项通过 | 13 项运行时测试；6 项配置与凭据启动约定测试 |
+| 后端工作流与实体回归 | 59 项通过，5 项集成测试默认跳过 | 两个仓库均执行；包含 HTTP 表单到动态 API 落库、旧实例拦截、类型与 DDL 规划、Redis 故障恢复 |
 | 开源扫描器 `unittest` | 4 项通过 | 规则、值隐藏、禁止文件，以及工作区已清理但暂存区仍有凭据的情况 |
 | 前端生产构建 | 完整应用与 Pages 演示模式均通过 | 使用 CRACO 构建，完整应用约 26.2 MiB；关闭 source map，保留旧代码的 ESLint、Autoprefixer、Browserslist 等警告 |
 | 两份 Compose 配置 | `config --quiet` 通过 | 默认应用及独立前端演示；仅注入临时合成测试凭据 |
@@ -23,6 +24,8 @@
 | Git 空白检查 | 通过 | `git diff --check` |
 
 运行时测试包含：任务查询凭据隔离与摘要存储、并发和未完成任务容量限制、排队与执行超时、异常详情隐藏、上下文快照、关闭前尚未开始的任务、跨运行时共享结果、轮询不续期、完成结果优先淘汰、Redis 故障冷却、慢读与本地状态更新的竞争，以及配置边界。
+
+新增后端回归验证工作流配置保留、真实入口和终点、表单提交及业务失败、并发重复提交、旧页面实例隔离、嵌套参数与通知、实体默认值与类型转换、事务回滚、物理表变更规划，以及 Redis 版本比较、TTL 和容量边界。新增代码中的中文注释说明数据流和处理顺序，详见[后端修复文档](BACKEND_RELIABILITY.md)。
 
 ## 浏览器交互
 
@@ -64,6 +67,7 @@ pnpm typecheck
 pnpm test
 pnpm build
 python -m unittest discover -s backend/tests/unit -v
+python -m unittest discover -s backend/tests/regression -v
 python -m unittest discover -s scripts/tests -v
 python scripts/check_public_repo.py
 python scripts/check_public_repo.py --staged

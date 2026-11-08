@@ -13,6 +13,7 @@
 - 清晰接口: 标准化的输入输出格式
 """
 from dataclasses import dataclass, field
+from copy import deepcopy
 from typing import Dict, Any, Optional, List, Tuple
 import json
 import re
@@ -116,7 +117,7 @@ class WorkflowContext:
             WorkflowContext 实例
         """
         # 过滤控制字段，提取纯表单数据
-        control_fields = {"workflow_id", "node_id", "action", "&"}
+        control_fields = {"workflow_id", "node_id", "action", "&", "instance_id"}
         form_data = {k: v for k, v in request.items() if k not in control_fields}
         
         return cls(
@@ -239,466 +240,181 @@ class WorkflowExecutionService:
         
         return False
     
-    async def execute_step(
-        self,
-        user_id: str,
-        workflow_id: str,
-        node_id: str,
-        form_data: Dict[str, Any],
-        context: Dict[str, Any]
-    ) -> WorkflowExecutionResult:
-        """
-        执行工作流步骤 - 核心方法
-        
-        统一的工作流执行入口，处理：
-        1. 会话管理（获取或创建）
-        2. 步骤数据更新
-        3. 执行当前节点的业务逻辑（api_call 节点调用实际 API）
-        4. 下一步计算（支持条件分支）
-        5. AI Schema 生成
-        
-        Args:
-            user_id: 用户ID
-            workflow_id: 工作流ID
-            node_id: 当前节点ID
-            form_data: 表单数据
-            context: 上下文（包含 accessible_apis, user_token 等）
-        
-        Returns:
-            WorkflowExecutionResult: 执行结果
-        """
+    async def execute_step(self, user_id, workflow_id, node_id, form_data, context):
+        """同一用户串行提交，在任何业务调用前校验实例和当前节点，阻止旧表单重放。"""
         try:
-            logger.info(f"WorkflowExec: 执行步骤 user={user_id}, workflow={workflow_id}, node={node_id}")
-            logger.debug(f"WorkflowExec: 表单数据 {json.dumps(form_data, ensure_ascii=False, default=str)}")
-            
-            # 1. 获取或创建工作流会话
-            session = self.session_service.get_active_session(user_id)
-            
-            if not session or session.workflow_id != workflow_id:
-                # 需要创建新会话
-                session, node_id = await self._create_or_update_session(
-                    user_id, workflow_id, node_id
+            async with self.session_service.execution_lock(user_id):
+                return await self._execute_step_locked(
+                    user_id, workflow_id, node_id, form_data or {}, context or {}
                 )
-                if not session:
-                    return WorkflowExecutionResult(
-                        success=False,
-                        next_step=None,
-                        amis_schema=self._create_error_schema(f"工作流不存在: {workflow_id}"),
-                        error=f"工作流不存在: {workflow_id}"
-                    )
-            else:
-                # 已有会话，验证 node_id
-                node_id = self._validate_node_id(session, node_id)
-            
-            # 2. 更新会话数据（累积所有表单数据）
-            if form_data:
-                logger.debug(f"WorkflowExec: 累积表单数据字段 {list(form_data.keys())}")
-                self.session_service.update_session_step(
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    new_step=node_id,
-                    step_data=form_data
-                )
-            else:
-                logger.warning("WorkflowExec: 表单数据为空，仅更新步骤")
-                self.session_service.update_session_step(
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    new_step=node_id,
-                    step_data={}
-                )
-            
-            # 重新获取会话以确保数据最新
-            session = self.session_service.get_active_session(user_id)
-            logger.debug(f"WorkflowExec: 会话累积数据 {json.dumps(session.step_data, ensure_ascii=False, default=str)}")
-            
-            # 3. 获取当前节点信息
-            current_node = self._get_node_by_id(session.workflow_data, node_id)
+        except Exception as exc:
+            logger.exception("工作流步骤执行失败")
+            return WorkflowExecutionResult(
+                success=False, next_step=None, amis_schema=self._create_error_schema(str(exc)), error=str(exc)
+            )
 
-            # 4. 通知节点执行：统一走内置 notification_service
-            if current_node and current_node.get("type") == "notification":
-                ok, error_msg = await self._run_notification_node_if_needed(
-                    node=current_node,
-                    workflow_id=workflow_id,
-                    node_id=node_id,
-                    user_id=user_id,
-                    context=context,
-                    session=session
+    @staticmethod
+    def _submission_data(form_data):
+        """兼容嵌套 form_data 和 params，剔除控制字段以免污染业务上下文。"""
+        data = dict(form_data)
+        nested = data.pop("form_data", None)
+        if isinstance(nested, str):
+            nested = json.loads(nested)
+        if nested is not None and not isinstance(nested, dict):
+            raise ValueError("form_data 必须是对象")
+        data = {**(nested or {}), **data}
+        params = data.pop("params", None)
+        if isinstance(params, dict):
+            data = {**params, **data}
+        control = {"workflow_id", "node_id", "action", "&", "api_url", "api_method", "instance_id",
+                   "user_token", "accessible_apis"}
+        return {key: value for key, value in data.items()
+                if key not in control and (not key.startswith("__") or key == "__api_response__")}
+
+    async def _execute_step_locked(self, user_id, workflow_id, node_id, form_data, context):
+        """执行当前节点、保存结果，再依次推进自动节点，遇到表单时停止等待。"""
+        action = context.get("action", "next")
+        if action not in {"next", "submit"}:
+            raise ValueError("不支持的工作流操作")
+        session = self.session_service.get_active_session(user_id)
+        if context.get("instance_id") and (session is None or session.id != context["instance_id"]):
+            raise ValueError("表单属于已结束或已过期的工作流实例，请重新打开当前步骤")
+        if session is None or session.workflow_id != workflow_id:
+            session, node_id = await self._create_or_update_session(user_id, workflow_id, node_id)
+            if session is None:
+                raise ValueError("工作流不存在或无法执行")
+        else:
+            node_id = self._validate_node_id(session, node_id)
+        if context.get("instance_id") and context["instance_id"] != session.id:
+            raise ValueError("表单属于已结束的工作流实例，请重新打开当前步骤")
+        context = {**context, "instance_id": session.id}
+        data = self._submission_data(form_data)
+        if not self.session_service.update_session_step(user_id, workflow_id, node_id, data):
+            raise ValueError("工作流会话已过期，请重新开始")
+        session = self.session_service.get_active_session(user_id)
+        current = self._get_node_by_id(session.workflow_data, node_id)
+        if current is None:
+            raise ValueError("当前工作流节点不存在")
+        if current.get("type") == "end":
+            return self._finish_workflow(user_id, workflow_id, session, current)
+
+        if current.get("type") == "api_call":
+            method = str((current.get("config") or {}).get("method") or "GET").upper()
+            auto = self._should_auto_run_api_call(current, session.step_data)
+            response = next((data[key] for key in ("api_response", "__api_response__") if key in data), None)
+            if method in {"GET", "HEAD"} and response is not None:
+                from app.services.workflow_context import response_error
+                error = response_error(response)
+                if error:
+                    raise ValueError(error)
+                self._merge_request_params_into_session(session.step_data, data)
+                self._derive_missing_output_values(current, data, session.step_data)
+                payload = self._extract_api_response_from_form(current, data)
+                self._merge_api_result_into_session(session, node_id, {"success": True, "data": payload})
+            elif method in {"GET", "HEAD"} and data and not auto:
+                self._merge_request_params_into_session(session.step_data, data)
+                self._derive_missing_output_values(current, data, session.step_data)
+                payload = self._extract_api_response_from_form(current, data)
+                self._merge_api_result_into_session(session, node_id, {"success": True, "data": payload})
+            elif auto or action == "submit":
+                if self._has_missing_required_params(current, session.step_data):
+                    raise ValueError("当前步骤缺少必填参数")
+                result = await self._execute_api_call_node(current, session.step_data, context)
+                if not self._merge_api_result_into_session(session, node_id, result):
+                    raise ValueError(result.get("error") or "业务 API 执行失败")
+            else:
+                return await self._waiting_schema(session, workflow_id, node_id, context)
+        elif current.get("type") == "notification":
+            if not self._should_auto_run_notification(current) and action == "next" and not data:
+                return await self._waiting_schema(session, workflow_id, node_id, context)
+            ok, error = await self._run_notification_node_if_needed(
+                current, workflow_id, node_id, user_id, context, session
+            )
+            if not ok:
+                raise ValueError(error or "通知执行失败")
+            session = self.session_service.get_active_session(user_id)
+        elif current.get("type") == "user_input" and action == "next" and not data:
+            return await self._waiting_schema(session, workflow_id, node_id, context)
+
+        self.session_service.update_session_step(user_id, workflow_id, node_id, session.step_data)
+        self.session_service.mark_step_completed(
+            user_id, node_id, data, session.step_data.get(f"{node_id}_result")
+        )
+        session = self.session_service.get_active_session(user_id)
+        next_step = self.session_service.get_next_step(user_id, session.step_data)
+        visited = {node_id}
+        for _ in range(100):
+            if not next_step:
+                raise ValueError("没有满足条件的后续步骤，请检查分支配置")
+            node = self._get_node_by_id(session.workflow_data, next_step)
+            if node is None:
+                raise ValueError("后续步骤不存在")
+            if node.get("type") == "end":
+                return self._finish_workflow(user_id, workflow_id, session, node)
+            kind = node.get("type")
+            automatic = (
+                kind in {"start", "condition"}
+                or (kind == "api_call" and self._should_auto_run_api_call(node, session.step_data))
+                or (kind == "notification" and self._should_auto_run_notification(node))
+            )
+            if not automatic:
+                self.session_service.update_session_step(user_id, workflow_id, next_step, session.step_data)
+                session = self.session_service.get_active_session(user_id)
+                return await self._waiting_schema(session, workflow_id, next_step, context)
+            if next_step in visited:
+                raise ValueError("检测到自动执行循环，请检查工作流连线")
+            visited.add(next_step)
+            # 先保存真正要执行的节点，API 失败后重试才不会从前一步重复写入。
+            self.session_service.update_session_step(user_id, workflow_id, next_step, session.step_data)
+            session = self.session_service.get_active_session(user_id)
+            if kind == "api_call":
+                result = await self._execute_api_call_node(node, session.step_data, context)
+                if not self._merge_api_result_into_session(session, next_step, result):
+                    raise ValueError(result.get("error") or "业务 API 执行失败")
+            elif kind == "notification":
+                ok, error = await self._run_notification_node_if_needed(
+                    node, workflow_id, next_step, user_id, context, session
                 )
                 if not ok:
-                    logger.error(f"WorkflowExec: 通知节点执行失败: {error_msg}")
-                    return WorkflowExecutionResult(
-                        success=False,
-                        next_step=None,
-                        amis_schema=self._create_error_schema(f"通知发送失败: {error_msg}"),
-                        error=error_msg
-                    )
+                    raise ValueError(error or "通知执行失败")
                 session = self.session_service.get_active_session(user_id)
-            
-            # 5. 如果当前节点是 api_call 类型，根据 HTTP 方法和 action 决定行为
-            # 🔥 核心逻辑（与数据集 amis_generator_v3.py 一致）：
-            #   - GET 请求：前端 AMIS 直接调用业务 API（wizard.initApi / service.api / select.source）
-            #               返回数据通过 responseData 映射到表单，然后通过 "&": "$" 提交到后端
-            #               后端只需要存储这些数据，不需要调用 API
-            #   - POST 请求 + action="submit"：后端转发到业务 API（用户确认提交）
-            #   - POST 请求 + action="next"：用户刚进入节点，生成表单界面，等待用户填写
-            if current_node and current_node.get("type") == "api_call":
-                node_config = current_node.get("config", {})
-                http_method = node_config.get("method", "GET").upper()
-                action = context.get("action", "next")
-                
-                logger.info(f"WorkflowExec: api_call节点 {current_node.get('name')}, method={http_method}, action={action}")
-                
-                # 🔥 检查是否有实际的表单数据（排除空值和控制字段）
-                actual_form_data = {k: v for k, v in form_data.items() 
-                                   if k not in ["form_data", "workflow_id", "node_id", "action", "&"] 
-                                   and v not in [None, "", [], {}]}
-                
-                # 🔥 如果 form_data 字段存在且不为空，尝试解析它
-                if "form_data" in form_data and form_data["form_data"]:
-                    try:
-                        if isinstance(form_data["form_data"], str):
-                            import json as json_module
-                            parsed_form_data = json_module.loads(form_data["form_data"])
-                            if isinstance(parsed_form_data, dict):
-                                actual_form_data.update(parsed_form_data)
-                        elif isinstance(form_data["form_data"], dict):
-                            actual_form_data.update(form_data["form_data"])
-                    except:
-                        pass
-                
-                has_actual_data = bool(actual_form_data)
-                logger.debug(f"WorkflowExec: 实际表单数据 {actual_form_data}, 有数据={has_actual_data}")
-
-                auto_ran_current = False
-                if action == "next":
-                    merged_session_data = {**session.step_data, **actual_form_data}
-                    # GET 向导第二步常把查询参数放在 api_request.params 中，
-                    # 这里先扁平化，避免后续缺参误判。
-                    self._merge_request_params_into_session(merged_session_data, actual_form_data)
-                    if self._should_auto_run_api_call(current_node, merged_session_data):
-                        logger.info("WorkflowExec: api_call 节点自动执行（无需渲染表单）")
-                        for key, value in actual_form_data.items():
-                            session.step_data[key] = value
-                        # Fill request params (e.g., departure_date) into session for later steps.
-                        self._merge_request_params_into_session(session.step_data, actual_form_data)
-                        self.session_service.update_session_step(
-                            user_id=user_id,
-                            workflow_id=workflow_id,
-                            new_step=node_id,
-                            step_data=session.step_data
-                        )
-                        session = self.session_service.get_active_session(user_id)
-                        api_result = await self._execute_api_call_node(
-                            node=current_node,
-                            session_data=session.step_data,
-                            context=context
-                        )
-                        if not self._merge_api_result_into_session(session, node_id, api_result):
-                            error_msg = api_result.get("error", "API调用失败")
-                            logger.error(f"WorkflowExec: 自动执行 API 失败: {error_msg}")
-                            return WorkflowExecutionResult(
-                                success=False,
-                                next_step=None,
-                                amis_schema=self._create_error_schema(f"API调用失败: {error_msg}"),
-                                error=error_msg
-                            )
-                        self.session_service.update_session_step(
-                            user_id=user_id,
-                            workflow_id=workflow_id,
-                            new_step=node_id,
-                            step_data=session.step_data
-                        )
-                        auto_ran_current = True
-                
-                # 🔥 GET 请求：使用 AMIS Wizard 的 initApi 自动获取数据
-                # 前端 AMIS Wizard 通过 initApi 调用业务 API，获取数据后通过 "&": "$" 提交所有数据到后端
-                # 后端只需要存储这些数据，不需要自己调用 API
-                if not auto_ran_current and http_method == "GET":
-                    logger.info("WorkflowExec: GET 请求，使用 AMIS Wizard initApi 自动获取数据")
-                    
-                    # 如果前端已通过 AMIS Wizard 的 initApi 带回数据
-                    if has_actual_data:
-                        logger.info("WorkflowExec: GET 已收到 AMIS Wizard initApi 数据")
-                        
-                        # 保存前端 initApi 回填数据
-                        for key, value in actual_form_data.items():
-                            session.step_data[key] = value
-                        self._merge_request_params_into_session(session.step_data, actual_form_data)
-                        self._derive_missing_output_values(current_node, actual_form_data, session.step_data)
-
-                        # 如果前端回传了 API 响应结构，写入会话
-                        response_data = self._extract_api_response_from_form(current_node, actual_form_data)
-                        if response_data is not None:
-                            session.step_data[f"{node_id}_result"] = response_data
-                            session.step_data["last_api_result"] = response_data
-                            if isinstance(response_data, dict):
-                                for key, value in response_data.items():
-                                    if key not in ["status", "msg", "message"] and key not in session.step_data:
-                                        session.step_data[key] = value
-
-
-                        self.session_service.update_session_step(
-                            user_id=user_id,
-                            workflow_id=workflow_id,
-                            new_step=node_id,
-                            step_data=session.step_data
-                        )
-                        
-                        logger.info(f"WorkflowExec: GET 收到表单数据字段: {list(actual_form_data.keys())}")
-                        # 无需再执行后端 API
-                    else:
-                        # GET 且无实际数据，继续返回当前步骤
-                        # AMIS Wizard 仅展示 initApi 配置
-                        logger.info("WorkflowExec: GET 未收到 initApi 数据，返回 AMIS Wizard")
-                        session = self.session_service.get_active_session(user_id)
-                        amis_schema = await self._generate_step_schema(
-                            session=session,
-                            next_step=node_id,  # 仍停留在当前节点
-                            workflow_id=workflow_id,
-                            context=context
-                        )
-                        return WorkflowExecutionResult(
-                            success=True,
-                            next_step=node_id,
-                            amis_schema=amis_schema
-                        )
-
-                # POST 请求处理
-                elif not auto_ran_current and http_method == "POST":
-
-                    # 🔥 action="submit" 表示用户确认提交，后端需要转发到业务 API
-                    if action == "submit":
-                        logger.info("WorkflowExec: POST action=submit，后端转发到业务API")
-                        
-                        # 存储表单数据到会话
-                        for key, value in actual_form_data.items():
-                            session.step_data[key] = value
-                        
-                        self.session_service.update_session_step(
-                            user_id=user_id,
-                            workflow_id=workflow_id,
-                            new_step=node_id,
-                            step_data=session.step_data
-                        )
-                        
-                        # 🔥 调用业务 API
-                        session = self.session_service.get_active_session(user_id)
-                        api_result = await self._execute_api_call_node(
-                            node=current_node,
-                            session_data=session.step_data,
-                            context=context
-                        )
-                        
-                        # 存储 API 调用结果
-                        if api_result.get("success"):
-                            if not self._merge_api_result_into_session(session, node_id, api_result):
-                                error_msg = api_result.get("error", "API调用失败")
-                                logger.error(f"WorkflowExec: POST API调用失败: {error_msg}")
-                                return WorkflowExecutionResult(
-                                    success=False,
-                                    next_step=None,
-                                    amis_schema=self._create_error_schema(f"API调用失败: {error_msg}"),
-                                    error=error_msg
-                                )
-
-                            self.session_service.update_session_step(
-                                user_id=user_id,
-                                workflow_id=workflow_id,
-                                new_step=node_id,
-                                step_data=session.step_data
-                            )
-                            logger.info(f"WorkflowExec: POST API调用成功，结果已存入会话")
-                        else:
-                            error_msg = api_result.get("error", "API调用失败")
-                            logger.error(f"WorkflowExec: POST API调用失败: {error_msg}")
-                            return WorkflowExecutionResult(
-                                success=False,
-                                next_step=None,
-                                amis_schema=self._create_error_schema(f"API调用失败: {error_msg}"),
-                                error=error_msg
-                            )
-                        
-                        # 🔥 继续推进到下一步
-                    elif has_actual_data:
-                        # 🔥 有表单数据但 action != submit：存储数据，继续推进
-                        logger.debug("WorkflowExec: POST节点有数据，存储并推进")
-                        
-                        for key, value in actual_form_data.items():
-                            session.step_data[key] = value
-                        
-                        self.session_service.update_session_step(
-                            user_id=user_id,
-                            workflow_id=workflow_id,
-                            new_step=node_id,
-                            step_data=session.step_data
-                        )
-                    else:
-                        # 🔥 POST + action=next 且无数据：用户刚进入节点，生成表单界面
-                        logger.info(f"WorkflowExec: POST action={action}，无数据，生成表单界面")
-                        session = self.session_service.get_active_session(user_id)
-                        amis_schema = await self._generate_step_schema(
-                            session=session,
-                            next_step=node_id,  # 保持在当前节点
-                            workflow_id=workflow_id,
-                            context=context
-                        )
-                        return WorkflowExecutionResult(
-                            success=True,
-                            next_step=node_id,
-                            amis_schema=amis_schema
-                        )
-            
-            # 5. 计算下一步（支持条件分支）
-            # 🔥 只有在非 POST+next 的情况下才计算下一步
+            self.session_service.update_session_step(user_id, workflow_id, next_step, session.step_data)
+            self.session_service.mark_step_completed(
+                user_id, next_step, {}, session.step_data.get(f"{next_step}_result")
+            )
+            session = self.session_service.get_active_session(user_id)
             next_step = self.session_service.get_next_step(user_id, session.step_data)
-            
-            if not next_step:
-                logger.error("WorkflowExec: 无法确定下一步骤")
-                return WorkflowExecutionResult(
-                    success=False,
-                    next_step=None,
-                    amis_schema=self._create_error_schema("无法确定下一步骤"),
-                    error="无法确定下一步骤"
-                )
-            
-            # 6. 检查是否工作流完成
-            if next_step == "end":
-                logger.info("WorkflowExec: 工作流已完成")
-                self.session_service.end_session(user_id, "completed")
-                completion_node = self._get_node_by_id(session.workflow_data, session.current_step)
-                return WorkflowExecutionResult(
-                    success=True,
-                    next_step=None,
-                    amis_schema=self._create_completion_schema(session.step_data, completion_node),
-                    workflow_completed=True
-                )
-            
-            logger.info(f"WorkflowExec: 下一步={next_step}")
-            
-            # 7. 更新会话到下一步
-            # 自动推进：连续执行可自动运行的 api_call 节点
-            session = self.session_service.get_active_session(user_id)
-            auto_guard = 0
-            while next_step and next_step != "end" and auto_guard < 10:
-                auto_guard += 1
-                next_node = self._get_node_by_id(session.workflow_data, next_step)
-                if not next_node:
-                    break
+        raise ValueError("工作流自动执行超过 100 步，请检查循环")
 
-                next_node_type = next_node.get("type")
-                if next_node_type == "api_call":
-                    if not self._should_auto_run_api_call(next_node, session.step_data):
-                        break
-                    logger.info(f"WorkflowExec: 自动执行后续节点 {next_node.get('name')} ({next_step})")
-                    api_result = await self._execute_api_call_node(
-                        node=next_node,
-                        session_data=session.step_data,
-                        context=context
-                    )
-                    if not self._merge_api_result_into_session(session, next_step, api_result):
-                        error_msg = api_result.get("error", "API调用失败")
-                        logger.error(f"WorkflowExec: 自动执行 API 失败: {error_msg}")
-                        return WorkflowExecutionResult(
-                            success=False,
-                            next_step=None,
-                            amis_schema=self._create_error_schema(f"API调用失败: {error_msg}"),
-                            error=error_msg
-                        )
-                elif next_node_type == "notification":
-                    if not self._should_auto_run_notification(next_node):
-                        break
-                    logger.info(f"WorkflowExec: 自动执行通知节点 {next_node.get('name')} ({next_step})")
-                    ok, error_msg = await self._run_notification_node_if_needed(
-                        node=next_node,
-                        workflow_id=workflow_id,
-                        node_id=next_step,
-                        user_id=user_id,
-                        context=context,
-                        session=session
-                    )
-                    if not ok:
-                        logger.error(f"WorkflowExec: 自动执行通知失败: {error_msg}")
-                        return WorkflowExecutionResult(
-                            success=False,
-                            next_step=None,
-                            amis_schema=self._create_error_schema(f"通知发送失败: {error_msg}"),
-                            error=error_msg
-                        )
-                else:
-                    break
+    async def _waiting_schema(self, session, workflow_id, node_id, context):
+        """生成待提交界面，并把每个提交 API 绑定到当前实例和节点。"""
+        from app.services.workflow_context import bind_workflow_schema
+        schema = await self._generate_step_schema(session, node_id, workflow_id, context)
+        schema = bind_workflow_schema(schema, session, node_id)
+        return WorkflowExecutionResult(success=True, next_step=node_id, amis_schema=schema)
 
-                self.session_service.update_session_step(
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    new_step=next_step,
-                    step_data=session.step_data
-                )
-                session = self.session_service.get_active_session(user_id)
-                next_step = self.session_service.get_next_step(user_id, session.step_data)
-
-                if not next_step:
-                    logger.error("WorkflowExec: 无法确定下一步步骤")
-                    return WorkflowExecutionResult(
-                        success=False,
-                        next_step=None,
-                        amis_schema=self._create_error_schema("无法确定下一步步骤"),
-                        error="无法确定下一步步骤"
-                    )
-                if next_step == "end":
-                    logger.info("WorkflowExec: 工作流已完成")
-                    self.session_service.end_session(user_id, "completed")
-                    completion_node = self._get_node_by_id(session.workflow_data, session.current_step)
-                    return WorkflowExecutionResult(
-                        success=True,
-                        next_step=None,
-                        amis_schema=self._create_completion_schema(session.step_data, completion_node),
-                        workflow_completed=True
-                    )
-
-            self.session_service.update_session_step(
-                user_id=user_id,
-                workflow_id=workflow_id,
-                new_step=next_step,
-                step_data=session.step_data
-            )
-            
-            # 8. 生成下一步的 UI Schema
-            # 重新获取会话以确保包含最新的 API 结果
-            session = self.session_service.get_active_session(user_id)
-            
-            amis_schema = await self._generate_step_schema(
-                session=session,
-                next_step=next_step,
-                workflow_id=workflow_id,
-                context=context
-            )
-            
-            return WorkflowExecutionResult(
-                success=True,
-                next_step=next_step,
-                amis_schema=amis_schema
-            )
-            
-        except Exception as e:
-            logger.error(f"WorkflowExec: 执行失败 {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return WorkflowExecutionResult(
-                success=False,
-                next_step=None,
-                amis_schema=self._create_error_schema(str(e)),
-                error=str(e)
-            )
+    def _finish_workflow(self, user_id, workflow_id, session, end_node):
+        """记录实际结束节点，结束会话并返回完成界面。"""
+        self.session_service.update_session_step(user_id, workflow_id, end_node["id"], session.step_data)
+        self.session_service.mark_step_completed(user_id, end_node["id"])
+        snapshot = self.session_service.get_active_session(user_id)
+        self.session_service.end_session(user_id, "completed")
+        return WorkflowExecutionResult(
+            success=True, next_step=None, workflow_completed=True,
+            amis_schema=self._create_completion_schema(snapshot.step_data, end_node),
+        )
 
     def _should_auto_run_api_call(
         self,
         node: Dict[str, Any],
         session_data: Dict[str, Any]
     ) -> bool:
-        """Check if api_call node should auto-run (default auto unless missing params)."""
+        """读接口可在参数齐全时自动执行；写接口只有显式 ui_mode=auto 才自动执行。"""
         node_config = node.get("config", {}) if isinstance(node, dict) else {}
-        ui_mode = str(node_config.get("ui_mode") or "auto").lower()
+        ui_mode = str(node_config.get("ui_mode") or "").lower()
+        method = str(node_config.get("method") or "GET").upper()
+        if method not in {"GET", "HEAD"} and ui_mode != "auto":
+            return False
         node_name = node.get("name", "unknown")
         logger.debug(f"WorkflowExec: _should_auto_run_api_call node={node_name}, ui_mode={ui_mode}, config={node_config}")
         if ui_mode == "form":
@@ -858,36 +574,26 @@ class WorkflowExecutionService:
 
         return required
 
-    def _merge_api_result_into_session(
-        self,
-        session,
-        node_id: str,
-        api_result: Dict[str, Any]
-    ) -> bool:
+    def _merge_api_result_into_session(self, session, node_id, api_result):
+        """业务失败不合并输出；成功时同时保存节点命名空间与兼容的扁平字段。"""
+        from app.services.workflow_context import response_error, unwrap_response
         if not api_result.get("success"):
             return False
-        result_data = api_result.get("data", {})
-        payload = result_data
-        response_code = None
-        if isinstance(result_data, dict):
-            response_code = result_data.get("code")
-            if isinstance(result_data.get("data"), dict):
-                payload = result_data.get("data")
-
-        # Store payload for templating/conditions
-        if isinstance(payload, dict) and "payment_success" not in payload:
-            if response_code is not None:
-                payload["payment_success"] = (response_code == 200)
-            elif node_id and "payment" in str(node_id).lower():
-                payload["payment_success"] = True
-
+        response = api_result.get("data")
+        error = response_error(response)
+        if error:
+            api_result["error"] = error
+            return False
+        payload = deepcopy(unwrap_response(response))
+        if isinstance(payload, dict) and "payment" in str(node_id).lower() and "payment_success" not in payload:
+            code = response.get("code") if isinstance(response, dict) else None
+            if code is not None:
+                payload["payment_success"] = code == 0 or 200 <= int(code) < 300
         session.step_data[f"{node_id}_result"] = payload
         session.step_data["last_api_result"] = payload
-
         if isinstance(payload, dict):
             for key, value in payload.items():
-                # API 输出应覆盖同名旧值，避免分支判断使用到历史脏数据（如 verified）。
-                if key not in ["status", "msg", "message"]:
+                if key not in {"status", "msg", "message", "api_url", "api_method"} and not key.startswith("__"):
                     session.step_data[key] = value
         return True
 
@@ -909,19 +615,9 @@ class WorkflowExecutionService:
             or "系统通知"
         )
 
-        def _replace_var(match: re.Match[str]) -> str:
-            key = match.group(1)
-            value = session_data.get(key)
-            if value is None:
-                return match.group(0)
-            if isinstance(value, (dict, list)):
-                try:
-                    return json.dumps(value, ensure_ascii=False, default=str)
-                except Exception:
-                    return str(value)
-            return str(value)
-
-        return re.sub(r"\$\{(\w+)\}", _replace_var, str(raw_message))
+        from app.services.workflow_context import resolve_templates
+        resolved = resolve_templates(str(raw_message), session_data)
+        return json.dumps(resolved, ensure_ascii=False, default=str) if isinstance(resolved, (dict, list)) else str(resolved)
 
     async def _execute_notification_node(
         self,
@@ -962,7 +658,8 @@ class WorkflowExecutionService:
         channel = config.get("channel") or "in_app"
         title = node.get("name") or "流程通知"
         message = self._resolve_notification_message(node, session_data)
-        workflow_session_id = context.get("session_id") or f"{user_id}:{workflow_id}"
+        # 同一节点在一个实例内去重；重新开始会获得新实例 ID，允许再次发送通知。
+        workflow_session_id = context.get("instance_id") or context.get("session_id") or f"{user_id}:{workflow_id}"
         idempotency_key = f"wf:{workflow_id}:node:{node_id}:session:{workflow_session_id}"
 
         request_data = {
@@ -1027,10 +724,9 @@ class WorkflowExecutionService:
         logger.debug(f"APICall: 节点配置 {json.dumps(node_config, ensure_ascii=False, default=str)}")
         logger.debug(f"APICall: 会话数据 {json.dumps(session_data, ensure_ascii=False, default=str)}")
         
-        # 🔥 优先从会话数据中获取 api_url 和 api_method（前端传递的）
-        # 这样可以支持 AI 生成的动态 API 配置
-        api_endpoint = session_data.get("api_url") or node_config.get("api_endpoint")
-        method = session_data.get("api_method") or node_config.get("method", "GET")
+        # 业务 API 由服务端节点定义决定。
+        api_endpoint = node_config.get("api_endpoint")
+        method = node_config.get("method") or "GET"
         
         # 获取 API 配置
         api_id = node_config.get("api_id")
@@ -1065,72 +761,36 @@ class WorkflowExecutionService:
         
         return result
     
-    async def _create_or_update_session(
-        self,
-        user_id: str,
-        workflow_id: str,
-        node_id: str
-    ) -> tuple:
-        """
-        创建或更新工作流会话
-        
-        Returns:
-            tuple: (session, validated_node_id)
-        """
-        # 获取工作流详情
-        wf_result = self.workflow_service.get_workflow_detail(workflow_id)
-        if not wf_result.get("success"):
-            logger.error(f"WorkflowExec: 工作流不存在 {workflow_id}")
+    async def _create_or_update_session(self, user_id, workflow_id, node_id):
+        """仅允许从入口创建会话，不允许直接提交到任意中间节点。"""
+        result = self.workflow_service.get_workflow_detail(workflow_id)
+        if not result.get("success"):
             return None, node_id
-        
-        workflow_data = wf_result["data"]["workflow"]
-        
-        # 创建会话
-        session = self.session_service.create_session(user_id, workflow_id, workflow_data)
-        
-        # 验证 node_id
-        valid_node_ids = {n.get("id") for n in workflow_data.get("nodes", [])}
-        if node_id not in valid_node_ids:
-            # node_id 不存在，使用第一个有效节点
-            first_valid_node = None
-            for n in workflow_data.get("nodes", []):
-                if n.get("type") not in ("start", "end"):
-                    first_valid_node = n.get("id")
-                    break
-            
-            if first_valid_node:
-                logger.warning(f"WorkflowExec: node_id '{node_id}'不存在，使用第一个有效节点 {first_valid_node}")
-                node_id = first_valid_node
-            else:
-                logger.warning(f"WorkflowExec: node_id '{node_id}'不存在，且无法找到有效节点")
-        
-        # 更新 current_step
-        self.session_service.update_session_step(
-            user_id=user_id,
-            workflow_id=workflow_id,
-            new_step=node_id,
-            step_data={}
-        )
-        
-        logger.info(f"WorkflowExec: 创建新会话 workflow={workflow_id}, node={node_id}")
-        return session, node_id
-    
-    def _validate_node_id(self, session, node_id: str) -> str:
-        """
-        验证 node_id 是否存在于工作流中
-        
-        Returns:
-            str: 验证后的 node_id
-        """
-        workflow_data = session.workflow_data
-        valid_node_ids = {n.get("id") for n in workflow_data.get("nodes", [])}
-        
-        if node_id not in valid_node_ids:
-            logger.warning(f"WorkflowExec: node_id '{node_id}'不存在，使用当前会话步骤 {session.current_step}")
-            return session.current_step
-        
+        from app.services.workflow_graph import normalize_nodes
+        from app.services.workflow_service import normalize_status
+        flow = result["data"]["workflow"]
+        if normalize_status(flow.get("status")) != "ACTIVE":
+            raise ValueError("工作流尚未启用")
+        flow["nodes"] = normalize_nodes(flow["nodes"], executable=True)
+        start = next(node for node in flow["nodes"] if node.get("type") == "start")
+        previous = self.session_service._load_session(user_id)
+        if previous is not None and previous.workflow_id == workflow_id and previous.status != "active" and node_id != start["id"]:
+            raise ValueError("工作流已结束，请重新开始")
+        initial_nodes = {start["id"]} | {edge["node_id"] for edge in start["child_nodes"]}
+        if node_id not in initial_nodes:
+            raise ValueError("请从工作流入口开始，不能跳过前置步骤")
+        session = self.session_service.create_session(user_id, workflow_id, flow)
+        self.session_service.update_session_step(user_id, workflow_id, node_id)
+        return self.session_service.get_active_session(user_id), node_id
+
+    def _validate_node_id(self, session, node_id):
+        """只接受当前节点，拒绝旧页面和跳步提交。"""
+        if node_id != session.current_step:
+            raise ValueError("表单步骤已过期，请使用当前步骤")
+        if not self._get_node_by_id(session.workflow_data, node_id):
+            raise ValueError("工作流节点不存在")
         return node_id
-    
+
     async def _generate_step_schema(
         self,
         session,
