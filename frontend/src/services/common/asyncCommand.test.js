@@ -44,3 +44,22 @@ test('does not propagate Axios request headers when a request fails', async () =
   try { await runAsyncCommand('test', {}); throw new Error('Expected failure'); }
   catch (error) { expect(error.message).toBe('当前任务较多，请稍后重试'); expect(error.config).toBeUndefined(); }
 });
+
+test('cancelling during a poll prevents success from reopening the interface', async () => {
+  const controller = new AbortController();
+  let complete;
+  let markPolled;
+  const polled = new Promise(resolve => { markPolled = resolve; });
+  axios.get.mockImplementation(() => new Promise(resolve => { complete = resolve; markPolled(); }));
+  const pending = runAsyncCommand('fixture', {}, {}, { signal: controller.signal });
+  const cancelled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  await polled;
+  controller.abort();
+  complete({ data: { data: { status: 'SUCCESS', result: { schema: { type: 'page' } } } } });
+  await cancelled;
+});
+test('an already cancelled command never submits a task', async () => {
+  const controller = new AbortController(); controller.abort();
+  await expect(runAsyncCommand('fixture', {}, {}, { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+  expect(axios.post).not.toHaveBeenCalled();
+});

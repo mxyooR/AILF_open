@@ -34,3 +34,22 @@ test('responses from a previous interface, instance or step cannot replace the c
   expect(canApplyWorkflowResponse(schema, schema, { instance_id: 'instance-1', node_id: 'edit-2' })).toBe(false);
   expect(canApplyWorkflowResponse(schema, schema, { instance_id: 'instance-2', node_id: 'edit-1' })).toBe(false);
 });
+
+test('fetcher puts business status where AMIS actually reads it and retains adaptor fields', () => {
+  const { toAmisFetcherResponse } = require('./amisTransport');
+  const payload = { code: 409, message: '订单状态冲突', data: { order_id: 'fixture' } };
+  const response = toAmisFetcherResponse(payload);
+  expect(response.data).toEqual({ ...payload, data: null, status: 409, msg: '订单状态冲突' });
+  expect(response.data.status).not.toBe(0);
+  expect(payload).not.toHaveProperty('status');
+});
+test('uploads and downloads keep AMIS response type and transport options', () => {
+  const request = buildAmisRequest({ url: '/api/v1/files/serve/fixture', responseType: 'blob', config: { timeout: 5000, withCredentials: true } }, {});
+  expect(request).toMatchObject({ responseType: 'blob', timeout: 5000, withCredentials: true });
+});
+test('automatic authentication is restricted to app API URLs', () => {
+  const { canSendUserToken } = require('./amisTransport');
+  expect(canSendUserToken('/api/v1/orders')).toBe(true);
+  expect(canSendUserToken('https://example.org/api/v1/orders')).toBe(false);
+  expect(canSendUserToken('//example.org/api/v1/orders')).toBe(false);
+});

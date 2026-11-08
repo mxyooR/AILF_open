@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import '../styles/apple-style.css';
 import axios from 'axios';
-import { buildAmisRequest, canApplyWorkflowResponse, normalizeAmisResponse } from '../services/common/amisTransport';
+import { buildAmisRequest, canApplyWorkflowResponse, canSendUserToken, normalizeAmisResponse, toAmisFetcherResponse } from '../services/common/amisTransport';
 import { runAsyncCommand, AsyncCommandResult } from '../services/common/asyncCommand';
 // 移除amis相关导入，使用原生通知
 import copy from 'copy-to-clipboard';
@@ -17,6 +17,7 @@ import SiriOrb from '../components/SiriOrb';
 import ConfigurationIncompleteWarning from '../components/common/ConfigurationIncompleteWarning';
 import UserStatusIndicator from '../components/user/UserStatusIndicator';
 import { useLocalVoice } from '../hooks/useLocalVoice';
+import { useCommandRequest } from '../hooks/useCommandRequest';
 import { useUserAuth } from '../hooks/user/useUserAuth';
 import { userTokenManager } from '../services/common/userTokenManager';
 import { useConfigurationStatus } from '../hooks/useConfigurationStatus';
@@ -84,6 +85,7 @@ const MainPage: React.FC = () => {
   const [errorText, setErrorText] = useState('');
   const [menuCommand, setMenuCommand] = useState('');
   const [isCommandModalOpen, setIsCommandModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuInputRef = useRef<HTMLInputElement | null>(null);
 
   const [appConfig, setAppConfig] = useState<AppConfig>({ title: 'AILF', subtitle: '开发者配置面板', backgroundStyle: 'mesh' });
@@ -91,6 +93,7 @@ const MainPage: React.FC = () => {
   // 语音相关状态 - 混合模式：优先 Web Speech API，失败时切换到本地 Whisper
   const {
     isListening,
+    isTranscribing,
     transcript,
     isSpeaking,
     volume,
@@ -99,6 +102,7 @@ const MainPage: React.FC = () => {
     startListening,
     stopListening,
     speak,
+    stopSpeaking,
     setTranscript,
     voiceError,
     recognitionMode,
@@ -120,9 +124,10 @@ const MainPage: React.FC = () => {
     command: string,
     context: Record<string, any>,
     headers: Record<string, string> = {},
-    timeoutMs = 600000
+    timeoutMs = 600000,
+    signal?: AbortSignal
   ): Promise<AsyncCommandResult> => runAsyncCommand(command, context, headers, {
-    baseURL: AILF_CONFIG.apiBaseUrl, timeoutMs
+    baseURL: AILF_CONFIG.apiBaseUrl, timeoutMs, signal
   }), []);
 
   // Amis 环境配置
@@ -135,7 +140,7 @@ const MainPage: React.FC = () => {
         // 处理 amis 本地存储语法 ${ls:access_token}
         if (headers.Authorization && headers.Authorization.includes('${ls:access_token}')) {
           const userToken = userTokenManager.getToken();
-          if (userToken) {
+          if (userToken && canSendUserToken(api.url)) {
             headers.Authorization = `Bearer ${userToken}`;
           } else {
             console.log('[AILF] 警告：需要认证但用户未登录');
@@ -144,7 +149,7 @@ const MainPage: React.FC = () => {
         }
 
         // 如果没有认证头但用户已登录，自动添加
-        if (!headers.Authorization && userTokenManager.isAuthenticated()) {
+        if (canSendUserToken(api.url) && !headers.Authorization && userTokenManager.isAuthenticated()) {
           const userToken = userTokenManager.getToken();
           if (userToken) {
             headers.Authorization = `Bearer ${userToken}`;
@@ -152,7 +157,14 @@ const MainPage: React.FC = () => {
         }
 
         const submittedSchema = amisSchema;
+        const submittedUserId = userTokenManager.getUserInfo()?.id;
         const response = await axios(buildAmisRequest(api, headers));
+        // 关闭页面或切换账号后，旧表单的登录/业务响应不再改变当前会话。
+        if (latestSchemaRef.current !== submittedSchema || submittedUserId !== userTokenManager.getUserInfo()?.id) {
+          return toAmisFetcherResponse({ status: 1, msg: '界面或登录状态已更新，请使用当前表单', data: null });
+        }
+        // 下载接口需要原始 Blob 和 Content-Disposition，不能包装成普通 JSON。
+        if (api.responseType === 'blob' || api.config?.responseType === 'blob') return response;
         const normalized = normalizeAmisResponse(response.data, response.statusText);
 
         // 检查是否是登录API的响应
@@ -199,9 +211,9 @@ const MainPage: React.FC = () => {
         // 🔥 检查是否是 workflow/state API 的响应（返回新的 AMIS schema）
         if (api.url?.includes('/workflow/state') && response.data) {
           // 错误页也有 type=page，必须先检查业务状态，再决定是否替换表单。
-          if (normalized.status !== 0) return normalized;
+          if (normalized.status !== 0) return toAmisFetcherResponse(response.data);
           const canApply = () => canApplyWorkflowResponse(submittedSchema, latestSchemaRef.current, api.data);
-          if (!canApply()) return { status: 1, msg: '界面已更新，请使用当前表单', data: response.data };
+          if (!canApply()) return toAmisFetcherResponse({ status: 1, msg: '界面已更新，请使用当前表单', data: null });
           
           // workflow/state 返回格式: { status: 0, msg: "success", data: { type: "page", ... } }
           const newSchema = response.data.data;
@@ -216,11 +228,11 @@ const MainPage: React.FC = () => {
             }, 300);
             
             // 🔥 返回特殊响应，告诉 AMIS 不要显示成功提示（我们自己处理）
-            return {
+            return toAmisFetcherResponse({
               status: 0,
-              msg: '',  // 空消息，避免 AMIS 显示默认成功提示
-              data: { __workflow_handled: true }  // 标记已处理
-            };
+              msg: '',
+              data: { __workflow_handled: true }
+            });
           } else if (response.data.msg === '工作流已完成') {
             console.log('[AILF] 工作流已完成');
             setTimeout(() => {
@@ -229,11 +241,11 @@ const MainPage: React.FC = () => {
               speak('工作流已完成！');
             }, 500);
             
-            return {
+            return toAmisFetcherResponse({
               status: 0,
               msg: '工作流已完成',
               data: { __workflow_handled: true }
-            };
+            });
           }
         }
 
@@ -241,7 +253,7 @@ const MainPage: React.FC = () => {
 
         // AMIS expects `status: 0` for success. Our backend often returns `{code: 200, ...}`,
         // so normalize here to avoid "success but UI doesn't update" issues.
-        return normalized;
+        return toAmisFetcherResponse(response.data, response.statusText);
       } catch (error: any) {
         console.error('[AILF] Amis 请求失败，HTTP 状态:', error.response?.status);
         // 返回错误响应，包含错误信息供 AMIS 显示
@@ -250,11 +262,11 @@ const MainPage: React.FC = () => {
           message: error.response?.data?.detail || error.message || '请求失败',
           data: null
         };
-        return {
+        return toAmisFetcherResponse({
           status: error.response?.status || 500,
-          msg: errorData.message || error.message,
+          msg: errorData.message || errorData.msg || errorData.detail || error.message,
           data: errorData
-        };
+        });
       }
     },
     copy: (text: string) => {
@@ -351,168 +363,78 @@ const MainPage: React.FC = () => {
     return userTokenManager.isAuthenticated();
   }, []);
 
-  // 添加处理状态防护
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [lastProcessedCommand, setLastProcessedCommand] = useState('');
+  // 指令用同步锁防重；取消后忽略迟到结果，不能靠录音按钮重置运行状态。
+  const { isProcessing, beginRequest, isCurrentRequest, finishRequest, cancelRequest } = useCommandRequest();
 
-  // 处理语音命令
-  const handleVoiceCommand = useCallback(async (command: string) => {
-    if (!command.trim()) return;
-
-    // 防止在处理过程中重复触发
-    if (isProcessing) {
-      console.log('[AILF] 正在处理中，跳过命令:', command);
-      return;
-    }
-
-    console.log('[AILF] 处理语音命令:', command);
-    setIsProcessing(true);
-    setLastProcessedCommand(command);
+  const processCommand = useCallback(async (command: string, authenticated: boolean) => {
+    const request = beginRequest();
+    if (!request) return;
+    const userId = authenticated ? userTokenManager.getUserInfo()?.id : null;
+    const canApply = () => isCurrentRequest(request) &&
+      (!authenticated || (userTokenManager.isAuthenticated() && userTokenManager.getUserInfo()?.id === userId));
     setErrorText('');
-    setResponseText('正在处理您的请求...');
-
-    // 首先检查配置是否完成
-    if (!canUseFeatures) {
-      const errorMsg = '系统配置未完成，请先完成七步配置才能使用AI功能';
-      setErrorText(errorMsg);
-      speak(errorMsg);
-      console.log('[AILF] 配置未完成，禁止使用功能');
-      setIsProcessing(false);
-      return;
-    }
-
-    // 检查用户登录状态
-    const isLoggedIn = isUserLoggedIn();
-    console.log('[AILF] 用户登录状态:', isLoggedIn);
-
-    // 如果用户未登录，保存命令并显示登录界面
-    if (!isLoggedIn) {
-      console.log('[AILF] 用户未登录，保存命令并显示登录界面');
-      localStorage.setItem('pendingCommand', command);
-      localStorage.setItem('pendingCommandTime', Date.now().toString());
-
-      // 调用后端获取登录界面
-      await handleLoginRequired(command);
-      return;
-    }
-
-    // 用户已登录且配置完成，正常处理命令
-    await processAuthenticatedCommand(command);
-  }, [isUserLoggedIn, canUseFeatures, speak]);
-
-  // 处理需要登录的情况
-  const handleLoginRequired = useCallback(async (command: string) => {
+    setResponseText(authenticated ? '正在处理您的请求...' : '正在打开登录界面...');
+    latestSchemaRef.current = null;
+    setAmisSchema(null);
     try {
+      const token = authenticated ? userTokenManager.getToken() : null;
       const result = await submitAsyncCommand(command, {
-        user_id: "anonymous_user",
+        user_id: authenticated ? String(userId ?? 'anonymous_user') : 'anonymous_user',
         session_id: `session_${Date.now()}`,
-        require_auth: true
+        ...(authenticated ? { authenticated: true } : { require_auth: true })
       }, {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      });
-
-      if (result?.schema) {
-        console.log('[AILF] 收到登录界面响应:', result.raw);
+        'Accept': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }, 600000, request.controller.signal);
+      if (!canApply()) return;
+      setResponseText('');
+      if (result.schema) {
+        latestSchemaRef.current = result.schema;
         setAmisKey(prev => prev + 1);
         setAmisSchema(result.schema);
-        setResponseText('');
-        speak('请先登录以继续处理您的需求');
+        speak(authenticated
+          ? result.responseText || result.message || '界面已生成完成'
+          : '请先登录以继续处理您的需求');
       } else {
-        setErrorText('无法生成登录界面');
-        speak('无法生成登录界面，请稍后重试');
+        const message = result.message || '未能生成有效的界面配置';
+        setErrorText(message);
+        speak(message);
       }
     } catch (error: any) {
-      console.error('[AILF] 获取登录界面失败:', error);
-      setErrorText('获取登录界面失败');
-      speak('获取登录界面失败，请稍后重试');
+      if (!canApply()) return;
+      const message = error instanceof Error ? error.message : '处理请求失败，请稍后重试';
+      setErrorText(message);
+      setResponseText('');
+      speak(message);
     } finally {
-      setIsProcessing(false);
+      finishRequest(request);
     }
-  }, [speak, submitAsyncCommand]);
+  }, [beginRequest, isCurrentRequest, finishRequest, speak, submitAsyncCommand]);
 
-  // 未登录状态下，点击“登录”按钮直接拉起登录界面
-  const handleDirectLoginClick = useCallback(() => {
-    if (isProcessing) {
+  const processAuthenticatedCommand = useCallback((command: string) =>
+    processCommand(command, true), [processCommand]);
+
+  const handleVoiceCommand = useCallback(async (command: string) => {
+    const trimmed = command.trim();
+    if (!trimmed || isProcessing) return;
+    if (!canUseFeatures) {
+      const message = '系统配置未完成，请先完成七步配置才能使用AI功能';
+      setErrorText(message);
+      speak(message);
       return;
     }
-    setErrorText('');
-    setResponseText('正在打开登录界面...');
-    setIsProcessing(true);
-    void handleLoginRequired('登录');
-  }, [handleLoginRequired, isProcessing]);
-
-  // 处理已认证用户的命令
-  const processAuthenticatedCommand = useCallback(async (command: string) => {
-    try {
-      const headers: any = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      };
-
-      // 添加JWT token到请求头
-      const token = userTokenManager.getToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      // 获取用户信息
-      const userInfo = userTokenManager.getUserInfo();
-      let userId = "anonymous_user";
-      if (userInfo) {
-        userId = userInfo.id?.toString() || userInfo.username || "anonymous_user";
-      }
-
-      const result = await submitAsyncCommand(command, {
-        user_id: userId,
-        session_id: `session_${Date.now()}`,
-        authenticated: true
-      }, headers, 600000);
-
-      const schema = result.schema;
-      const responseText = result.responseText;
-
-      if (schema) {
-        console.log('[AILF] 收到异步API响应:', result.raw);
-        setAmisKey(prev => prev + 1);
-        setAmisSchema(schema);
-        setResponseText('');
-
-        // 语音反馈
-        if (responseText) {
-          speak(responseText);
-        } else if (result.message) {
-          speak(result.message);
-        } else {
-          speak('界面已生成完成');
-        }
-      } else {
-        const errorMsg = result.message || '未能生成有效的界面配置';
-        setErrorText(errorMsg);
-        speak(errorMsg);
-      }
-    } catch (error: any) {
-      console.error('[AILF] API调用失败:', error);
-      let errorMessage = '抱歉，处理您的请求时出现了问题';
-
-      if (error.code === 'ECONNREFUSED') {
-        errorMessage = '无法连接到后端服务，请确保后端服务正在运行';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'API端点不存在，请检查后端配置';
-      } else if (error.response?.status >= 500) {
-        errorMessage = '服务器内部错误，请稍后重试';
-      } else if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      }
-
-      setErrorText(errorMessage);
-      setResponseText('');
-      speak(errorMessage);
-    } finally {
-      // 确保处理状态被重置
-      setIsProcessing(false);
+    const authenticated = isUserLoggedIn();
+    if (!authenticated) {
+      localStorage.setItem('pendingCommand', trimmed);
+      localStorage.setItem('pendingCommandTime', String(Date.now()));
     }
-  }, [speak, submitAsyncCommand]);
+    await processCommand(trimmed, authenticated);
+  }, [isProcessing, canUseFeatures, isUserLoggedIn, processCommand, speak]);
+
+  const handleDirectLoginClick = useCallback(() => {
+    void processCommand('登录', false);
+  }, [processCommand]);
 
   // 监听语音识别结果
   useEffect(() => {
@@ -521,52 +443,43 @@ const MainPage: React.FC = () => {
       console.log(`[AILF 状态监控] transcript="${transcript}", isListening=${isListening}, isProcessing=${isProcessing}`);
     }
 
-    if (transcript && !isListening && !isProcessing) {
+    if (transcript && !isListening && !isTranscribing && !isProcessing) {
       console.log('[AILF] 检测到语音输入完成，自动提交命令');
       handleVoiceCommand(transcript);
       // 立即清除transcript，防止重复处理
       setTranscript('');
     }
-  }, [transcript, isListening, isProcessing, handleVoiceCommand]);
+  }, [transcript, isListening, isTranscribing, isProcessing, handleVoiceCommand]);
 
-  // 监听登录状态变化，登录成功后处理待处理的命令
+  // 登录完成后立即接续一次命令；请求锁同步生效，避免定时回调与手动输入并发。
   useEffect(() => {
-    const checkPendingCommand = async () => {
-      const isAuthenticated = userTokenManager.isAuthenticated();
-      const pendingCommand = localStorage.getItem('pendingCommand');
-      const pendingCommandTime = localStorage.getItem('pendingCommandTime');
+    if (!authState.isAuthenticated || isProcessing) return;
+    const command = localStorage.getItem('pendingCommand');
+    const savedAt = Number(localStorage.getItem('pendingCommandTime'));
+    if (!command) return;
+    localStorage.removeItem('pendingCommand');
+    localStorage.removeItem('pendingCommandTime');
+    const age = Date.now() - savedAt;
+    if (Number.isFinite(savedAt) && savedAt > 0 && age >= 0 && age < 5 * 60 * 1000) {
+      void processAuthenticatedCommand(command);
+    }
+  }, [authState.isAuthenticated, isProcessing, processAuthenticatedCommand]);
 
-      if (isAuthenticated && pendingCommand && pendingCommandTime) {
-        // 检查命令是否过期（5分钟内有效）
-        const commandTime = parseInt(pendingCommandTime);
-        const now = Date.now();
-        const fiveMinutes = 5 * 60 * 1000;
-
-        if (now - commandTime < fiveMinutes) {
-          console.log('[AILF] 检测到登录成功，处理待处理的命令:', pendingCommand);
-          
-          // 立即清除 localStorage，防止重复执行
-          localStorage.removeItem('pendingCommand');
-          localStorage.removeItem('pendingCommandTime');
-          
-          // 🔥 语音提示正在处理
-          speak(`登录成功！正在处理您的请求：${pendingCommand}`);
-          
-          // 延迟一下确保登录状态完全更新
-          setTimeout(() => {
-            processAuthenticatedCommand(pendingCommand);
-          }, 1000);
-        } else {
-          // 命令已过期，清除
-          localStorage.removeItem('pendingCommand');
-          localStorage.removeItem('pendingCommandTime');
-          console.log('[AILF] 待处理命令已过期，已清除');
-        }
-      }
-    };
-
-    checkPendingCommand();
-  }, [authState.isAuthenticated, processAuthenticatedCommand]);
+  // 登出或切换账号后清掉旧界面，不能显示上个用户的业务数据。
+  const previousUserId = useRef(authState.user?.id);
+  useEffect(() => {
+    const currentUserId = authState.user?.id;
+    if (previousUserId.current != null && previousUserId.current !== currentUserId) {
+      cancelRequest();
+      latestSchemaRef.current = null;
+      setAmisSchema(null);
+      setResponseText('');
+      setErrorText('');
+      localStorage.removeItem('pendingCommand');
+      localStorage.removeItem('pendingCommandTime');
+    }
+    previousUserId.current = currentUserId;
+  }, [authState.user?.id, cancelRequest]);
 
   // 诊断连接函数
   const handleDiagnoseConnection = useCallback(async () => {
@@ -586,15 +499,13 @@ const MainPage: React.FC = () => {
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       max-width: 420px;
       min-width: 320px;
+      white-space: pre-line;
     `;
 
     document.body.appendChild(diagnosticNotification);
     const healthEndpoint = `${AILF_CONFIG.apiBaseUrl}/health`;
 
-    diagnosticNotification.innerHTML = `
-      <div style="font-weight: 600; margin-bottom: 12px;">🔍 连接诊断</div>
-      <div style="font-size: 12px; line-height: 1.6;">正在检查健康接口 ${healthEndpoint} ...</div>
-    `;
+    diagnosticNotification.textContent = `🔍 连接诊断\n正在检查健康接口 ${healthEndpoint} ...`;
 
     try {
       const start = performance.now();
@@ -615,22 +526,11 @@ const MainPage: React.FC = () => {
 
       const ok = response.ok;
       diagnosticNotification.style.background = ok ? 'rgba(52, 199, 89, 0.95)' : 'rgba(255, 59, 48, 0.95)';
-      diagnosticNotification.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 12px;">🔍 连接诊断</div>
-        <div style="font-size: 12px; line-height: 1.6;">
-          <div>health 接口: ${ok ? '✅ 正常' : '❌ 异常'}</div>
-          <div style="opacity: 0.85; margin-top: 6px;">${detailText}</div>
-        </div>
-      `;
+      // 健康接口消息也按文本显示，不能执行接口返回的 HTML。
+      diagnosticNotification.textContent = `🔍 连接诊断\nhealth 接口: ${ok ? '✅ 正常' : '❌ 异常'}\n${detailText}`;
     } catch (error: any) {
       diagnosticNotification.style.background = 'rgba(255, 59, 48, 0.95)';
-      diagnosticNotification.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 12px;">🔍 连接诊断</div>
-        <div style="font-size: 12px; line-height: 1.6;">
-          <div>health 接口: ❌ 无法连接</div>
-          <div style="opacity: 0.85; margin-top: 6px;">${error?.message || '未知错误'}</div>
-        </div>
-      `;
+      diagnosticNotification.textContent = `🔍 连接诊断\nhealth 接口: ❌ 无法连接\n${error?.message || '未知错误'}`;
     }
 
     // 8秒后移除通知
@@ -654,13 +554,12 @@ const MainPage: React.FC = () => {
     if (isListening) {
       stopListening();
     } else {
-      // 每次开始录音前，强制重置处理状态，防止卡死
-      setIsProcessing(false);
+      if (isProcessing) return;
       setErrorText('');
       setResponseText('');
       startListening();
     }
-  }, [isListening, startListening, stopListening, canUseFeatures, speak]);
+  }, [isListening, isProcessing, startListening, stopListening, canUseFeatures, speak]);
 
   // 手动发送当前转录内容
   const handleManualSend = useCallback(() => {
@@ -686,10 +585,16 @@ const MainPage: React.FC = () => {
 
   // 关闭生成的界面
   const closeGeneratedInterface = useCallback(() => {
+    cancelRequest();
+    stopListening();
+    stopSpeaking();
+    latestSchemaRef.current = null;
+    localStorage.removeItem('pendingCommand');
+    localStorage.removeItem('pendingCommandTime');
     setAmisSchema(null);
     setResponseText('');
     setErrorText('');
-  }, []);
+  }, [cancelRequest, stopListening, stopSpeaking]);
 
   // 如果配置状态正在加载，显示加载状态
   if (configLoading) {
@@ -799,6 +704,7 @@ const MainPage: React.FC = () => {
           {errorText && <div className="error-message">{errorText}</div>}
 
           {responseText && <div className="ai-response">{responseText}</div>}
+          {isProcessing && <button type="button" onClick={closeGeneratedInterface}>取消请求</button>}
 
           {transcript && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
@@ -864,8 +770,8 @@ const MainPage: React.FC = () => {
         <div className="mic-button-container">
           <SiriOrb
             isListening={isListening}
-            isLoading={isModelLoading}
-            disabled={isModelLoading}
+            isLoading={isModelLoading || isProcessing || isTranscribing}
+            disabled={isModelLoading || isProcessing || isTranscribing}
             volume={volume}
             onClick={toggleListening}
           />
@@ -873,13 +779,17 @@ const MainPage: React.FC = () => {
       </div>
 
       {/* 右下角隐蔽开发者菜单 */}
-      <div className="dev-menu-container">
-        <button className="dev-menu-button" aria-label="开发者菜单">
+      <div className={`dev-menu-container ${isMenuOpen ? 'is-open' : ''}`} onKeyDown={event => {
+        if (event.key === 'Escape') setIsMenuOpen(false);
+      }}>
+        <button type="button" className="dev-menu-button" aria-label="开发者菜单"
+          aria-expanded={isMenuOpen} aria-controls="main-developer-menu"
+          onClick={() => setIsMenuOpen(previous => !previous)}>
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
           </svg>
         </button>
-        <div className="dev-menu-dropdown">
+        <div className="dev-menu-dropdown" id="main-developer-menu">
           <button
             className="dev-menu-item"
             onClick={() => navigate('/config')}
@@ -904,7 +814,7 @@ const MainPage: React.FC = () => {
           <div className="dev-menu-divider" />
           <button
             className="dev-menu-item dev-menu-toggle"
-            onClick={() => setIsCommandModalOpen(true)}
+            onClick={() => { setIsMenuOpen(false); setIsCommandModalOpen(true); }}
           >
             输入语音指令
           </button>

@@ -48,8 +48,9 @@ interface UserTokenManagerConfig {
   refreshThreshold?: number; // 提前多少秒刷新token
 }
 
-class UserTokenManager {
+export class UserTokenManager {
   private tokenInfo: UserTokenInfo | null = null;
+  private refreshPromise: Promise<void> | null = null;
   private config: Required<UserTokenManagerConfig>;
   private refreshTimer: NodeJS.Timeout | null = null;
   private listeners: Array<(isAuthenticated: boolean, userInfo?: UserInfo) => void> = [];
@@ -151,6 +152,7 @@ class UserTokenManager {
    * 检查token是否有效（未过期）
    */
   private isTokenValid(tokenInfo: UserTokenInfo): boolean {
+    if (typeof tokenInfo.access_token !== 'string' || !tokenInfo.access_token.trim()) return false;
     if (!tokenInfo.expires_at) {
       // 如果没有过期时间，假设token有效（可能需要服务器验证）
       return true;
@@ -188,7 +190,9 @@ class UserTokenManager {
     }
 
     const remainingTime = this.getRemainingTime(this.tokenInfo);
-    const refreshTime = Math.max(0, remainingTime - this.config.refreshThreshold);
+    // 短有效期令牌也延迟刷新，避免刷新成功后立即再次刷新的请求风暴。
+    const refreshTime = Math.max(1, remainingTime > this.config.refreshThreshold
+      ? remainingTime - this.config.refreshThreshold : Math.floor(remainingTime / 2));
 
     if (refreshTime > 0) {
       this.refreshTimer = setTimeout(() => {
@@ -202,57 +206,55 @@ class UserTokenManager {
     }
   }
 
-  /**
-   * 刷新token
-   */
-  private async refreshToken(): Promise<void> {
-    if (!this.tokenInfo) {
-      console.error('[UserTokenManager] No token available for refresh.');
-      this.clearToken();
-      return;
-    }
-
-    try {
-      console.log('[UserTokenManager] Refreshing user token...');
-      
-      // 调用用户token刷新API
-      const response = await fetch('/api/v1/user/refresh-token', {
-        method: 'POST',
-        headers: {
-          ...(this.tokenInfo.access_token ? { 'Authorization': `Bearer ${this.tokenInfo.access_token}` } : {}),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          refresh_token: this.tokenInfo.refresh_token || null
-        })
-      });
-
-      if (response.ok) {
+  /** 合并同一会话的并发刷新；旧会话响应不能覆盖新登录或清掉新账号。 */
+  private refreshToken(): Promise<void> {
+    if (this.refreshPromise) return this.refreshPromise;
+    const snapshot = this.tokenInfo;
+    if (!snapshot) return Promise.resolve();
+    const attempt = (async () => {
+      try {
+        const response = await fetch('/api/v1/user/refresh-token', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${snapshot.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: snapshot.refresh_token || null })
+        });
         const data = await response.json();
-        if (data.code === 200) {
-          // 更新token信息
-          this.tokenInfo.access_token = data.data.access_token;
-          this.tokenInfo.refresh_token = data.data.refresh_token || this.tokenInfo.refresh_token;
-          this.tokenInfo.expires_in = data.data.expires_in;
-          this.tokenInfo.issued_at = new Date().toISOString();
-          this.tokenInfo.expires_at = new Date(Date.now() + data.data.expires_in * 1000).toISOString();
-          
-          this.saveToStorage();
-          this.scheduleRefresh();
-          this.setTokenToApiClient(this.tokenInfo.access_token);
-          console.log('[UserTokenManager] Token refreshed successfully');
-        } else {
-          console.error('[UserTokenManager] Token refresh failed:', data.message);
-          this.clearToken();
+        if (this.tokenInfo !== snapshot) return;
+        if (!response.ok || data.code !== 200) {
+          // 认证失效才退出；临时网络/服务故障允许在令牌过期前重试。
+          if ([400, 401, 403].includes(response.status) || [400, 401, 403].includes(data.code)) this.clearToken();
+          else this.scheduleRefreshRetry();
+          return;
         }
-      } else {
-        console.error('[UserTokenManager] Token refresh request failed:', response.status);
-        this.clearToken();
+        if (!data.data?.access_token || !Number.isFinite(data.data.expires_in) || data.data.expires_in <= 0) {
+          this.scheduleRefreshRetry();
+          return;
+        }
+        this.tokenInfo = {
+          ...snapshot, access_token: data.data.access_token,
+          refresh_token: data.data.refresh_token || snapshot.refresh_token,
+          expires_in: data.data.expires_in,
+          issued_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + data.data.expires_in * 1000).toISOString()
+        };
+        this.saveToStorage();
+        this.scheduleRefresh();
+        void this.setTokenToApiClient(this.tokenInfo.access_token);
+        this.notifyListeners(true, this.tokenInfo.user);
+      } catch {
+        if (this.tokenInfo === snapshot) this.scheduleRefreshRetry();
       }
-    } catch (error) {
-      console.error('[UserTokenManager] Token refresh error:', error);
-      this.clearToken();
-    }
+    })();
+    this.refreshPromise = attempt;
+    void attempt.finally(() => { if (this.refreshPromise === attempt) this.refreshPromise = null; });
+    return attempt;
+  }
+
+  private scheduleRefreshRetry(): void {
+    if (!this.tokenInfo) return;
+    const remaining = this.getRemainingTime(this.tokenInfo);
+    if (remaining <= 0) { this.clearToken(); return; }
+    this.refreshTimer = setTimeout(() => { void this.refreshToken(); }, Math.max(1, Math.min(30, remaining)) * 1000);
   }
 
   /**
@@ -260,8 +262,10 @@ class UserTokenManager {
    */
   private async setTokenToApiClient(token: string | null): Promise<void> {
     try {
+      const session = this.tokenInfo;
       const { apiClient } = await import('./apiClient');
-      apiClient.setUserToken(token);
+      if (this.tokenInfo !== session) return;
+      apiClient.setUserToken(this.tokenInfo?.access_token || null);
       if (token) {
         console.log('[UserTokenManager] User session updated');
       } else {
@@ -276,6 +280,10 @@ class UserTokenManager {
    * 设置用户token
    */
   setToken(loginData: UserTokenInfo): void {
+    if (!loginData.access_token || !Number.isFinite(loginData.expires_in) || loginData.expires_in <= 0) {
+      throw new Error('登录响应缺少有效的令牌或有效期');
+    }
+    this.refreshPromise = null;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + loginData.expires_in * 1000);
     
@@ -298,6 +306,7 @@ class UserTokenManager {
    */
   clearToken(): void {
     this.tokenInfo = null;
+    this.refreshPromise = null;
     this.clearStorage();
 
     if (this.refreshTimer) {
@@ -315,12 +324,28 @@ class UserTokenManager {
    * 获取当前token
    */
   getToken(): string | null {
-    return this.tokenInfo?.access_token || null;
+    return this.isAuthenticated() ? this.tokenInfo!.access_token : null;
+  }
+
+  /** 异步登录保存会话快照，仅比较引用，不能让旧响应覆盖已变化的身份。 */
+  getTokenInfo(): Readonly<UserTokenInfo> | null {
+    return this.tokenInfo;
   }
 
   /**
    * 获取用户信息
    */
+  /** 更新全局用户资料，让所有使用认证 Hook 的组件同步显示新资料。 */
+  updateUserInfo(user: UserInfo): void {
+    if (!user?.username || !user.role || !this.tokenInfo || user.id !== this.tokenInfo.user?.id) return;
+    const sameRole = user.role?.id === this.tokenInfo.user.role?.id;
+    this.tokenInfo.user = { ...user, role: sameRole
+      ? { ...this.tokenInfo.user.role, ...user.role } : user.role };
+    if (!sameRole) this.tokenInfo.permissions = { apis: [], features: [] };
+    this.saveToStorage();
+    this.notifyListeners(true, this.tokenInfo.user);
+  }
+
   getUserInfo(): UserInfo | null {
     return this.tokenInfo?.user || null;
   }
@@ -355,7 +380,7 @@ class UserTokenManager {
     }
     
     const requiredPermission = `${resource}:${action}`;
-    const permissions = this.tokenInfo.user.role.permissions || [];
+    const permissions = this.tokenInfo.user?.role?.permissions || [];
     
     return permissions.includes(requiredPermission) || 
            permissions.includes(`${resource}:*`) || 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { render as renderAmis } from 'amis';
 import SiriOrb from './SiriOrb';
 import { userTokenManager } from '../services/common/userTokenManager';
@@ -29,15 +29,21 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const inflightFetchRef = useRef<Map<string, Promise<string | null>>>(new Map());
 
-  const revokeAllBlobUrls = () => {
+  const mediaVersion = useRef(0);
+  const mediaControllers = useRef<Map<string, AbortController>>(new Map());
+
+  const revokeAllBlobUrls = useCallback(() => {
+    mediaVersion.current += 1;
+    mediaControllers.current.forEach(controller => controller.abort());
+    mediaControllers.current.clear();
     blobUrlCacheRef.current.forEach((blobUrl) => {
       URL.revokeObjectURL(blobUrl);
     });
     blobUrlCacheRef.current.clear();
     inflightFetchRef.current.clear();
-  };
+  }, []);
 
-  const normalizeProtectedMediaUrl = (rawUrl?: string | null): string | null => {
+  const normalizeProtectedMediaUrl = useCallback((rawUrl?: string | null): string | null => {
     if (!rawUrl) return null;
     const trimmed = rawUrl.trim();
     if (!trimmed) return null;
@@ -66,43 +72,51 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
     } catch (_error) {
       return null;
     }
-  };
+  }, []);
 
-  const fetchBlobUrlWithToken = async (url: string): Promise<string | null> => {
+  const fetchBlobUrlWithToken = useCallback(async (url: string): Promise<string | null> => {
     const cached = blobUrlCacheRef.current.get(url);
     if (cached) return cached;
 
     const inflight = inflightFetchRef.current.get(url);
     if (inflight) return inflight;
 
+    const version = mediaVersion.current;
+    const controller = new AbortController();
+    mediaControllers.current.set(url, controller);
     const request = (async () => {
       try {
         const token = userTokenManager.getToken();
         const headers: Record<string, string> = {};
         if (token) headers.Authorization = `Bearer ${token}`;
 
-        const resp = await fetch(url, { method: 'GET', headers });
+        const resp = await fetch(url, { method: 'GET', headers, signal: controller.signal });
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status}`);
         }
 
         const blob = await resp.blob();
+        // 关闭或切换界面后，不为迟到的响应创建无人释放的 Blob URL。
+        if (version !== mediaVersion.current || controller.signal.aborted || token !== userTokenManager.getToken()) return null;
         const blobUrl = URL.createObjectURL(blob);
         blobUrlCacheRef.current.set(url, blobUrl);
         return blobUrl;
       } catch (error) {
-        console.warn('[AILF] Failed to fetch media with token:', url, error);
+        if (!controller.signal.aborted) console.warn('[AILF] 媒体加载失败');
         return null;
       } finally {
-        inflightFetchRef.current.delete(url);
+        if (version === mediaVersion.current) {
+          inflightFetchRef.current.delete(url);
+          mediaControllers.current.delete(url);
+        }
       }
     })();
 
     inflightFetchRef.current.set(url, request);
     return request;
-  };
+  }, []);
 
-  const replaceMediaUrlIfNeeded = async (
+  const replaceMediaUrlIfNeeded = useCallback(async (
     element: Element,
     attrName: 'src' | 'data' | 'href',
     markerKey: string
@@ -111,21 +125,26 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
     const datasetKey = `authOriginal${markerKey}`;
     const fromDataset = (htmlElement.dataset as Record<string, string | undefined>)[datasetKey];
     const currentAttr = element.getAttribute(attrName);
-    const origin = fromDataset || currentAttr;
+    const origin = currentAttr?.startsWith('blob:') ? fromDataset : currentAttr;
     const normalizedUrl = normalizeProtectedMediaUrl(origin);
     if (!normalizedUrl) return;
+    // 普通 API 导航链接不能预加载后改成文件下载；仅处理明确的附件链接。
+    if (attrName === 'href' && !element.hasAttribute('download') && !/\/(?:files\/serve|download)(?:\/|$)/.test(new URL(normalizedUrl).pathname)) return;
 
-    if (!fromDataset) {
+    if (origin !== fromDataset) {
       (htmlElement.dataset as Record<string, string>)[datasetKey] = origin || '';
     }
 
     const blobUrl = await fetchBlobUrlWithToken(normalizedUrl);
-    if (!blobUrl) return;
+    if (!blobUrl || !element.isConnected) return;
+    const latestAttr = element.getAttribute(attrName);
+    const latestOrigin = latestAttr?.startsWith('blob:') ? (htmlElement.dataset as Record<string, string>)[datasetKey] : latestAttr;
+    if (normalizeProtectedMediaUrl(latestOrigin) !== normalizedUrl) return;
 
     if (element.getAttribute(attrName) !== blobUrl) {
       element.setAttribute(attrName, blobUrl);
     }
-  };
+  }, [fetchBlobUrlWithToken, normalizeProtectedMediaUrl]);
 
   // 管理 body 样式
   useEffect(() => {
@@ -175,7 +194,7 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
     return () => {
       revokeAllBlobUrls();
     };
-  }, [currentKey]);
+  }, [currentKey, revokeAllBlobUrls]);
 
   useEffect(() => {
     if (!shouldRender || !renderAreaRef.current) return;
@@ -216,7 +235,7 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
       destroyed = true;
       observer.disconnect();
     };
-  }, [shouldRender, currentKey]);
+  }, [shouldRender, currentKey, replaceMediaUrlIfNeeded]);
 
   // 🔥 使用 useMemo 缓存 AMIS 渲染结果，避免不必要的重新渲染
   const amisContent = useMemo(() => {
@@ -239,6 +258,8 @@ const GeneratedInterface: React.FC<GeneratedInterfaceProps> = ({
     <>
       {/* 左上角关闭按钮 - 在 amis-render-area 外面 */}
       <button 
+        type="button"
+        aria-label="关闭业务界面"
         onClick={onClose} 
         style={{
           position: 'fixed',

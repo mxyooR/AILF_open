@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../services/common/apiClient';
 import { useUserAuth } from '../hooks/user/useUserAuth';
@@ -14,6 +14,7 @@ interface NotificationItem {
   is_read?: boolean;
   read?: boolean;
   sent_at?: string;
+  send_time?: string;
   created_at?: string;
   read_time?: string;
 }
@@ -43,6 +44,11 @@ const NotificationsPage: React.FC = () => {
   const [hasNext, setHasNext] = useState(false);
   const [hasPrev, setHasPrev] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const requestVersion = useRef(0);
+  const actionPending = useRef(false);
+  const identity = authState.isAuthenticated ? authState.user?.id : null;
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
 
   useEffect(() => {
     document.body.className = 'notifications-page-body';
@@ -74,98 +80,83 @@ const NotificationsPage: React.FC = () => {
     return date.toLocaleString('zh-CN', { hour12: false });
   }, []);
 
-  const loadNotifications = useCallback(
-    async (targetPage: number) => {
-      if (!authState.isAuthenticated) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiClient.get<NotificationListData>('/api/v1/notifications', {
-          params: {
-            page: targetPage,
-            limit: PAGE_SIZE
-          }
-        });
-        const data = response.data || {};
-        const records = Array.isArray(data.items) ? data.items : [];
-        const totalCount = typeof data.total === 'number' ? data.total : records.length;
-        const unread =
-          typeof data.unread_count === 'number'
-            ? data.unread_count
-            : records.filter((item) => !isRead(item)).length;
-        setItems(records);
-        setTotal(totalCount);
-        setUnreadCount(unread);
-        setPage(typeof data.page === 'number' && data.page > 0 ? data.page : targetPage);
-        setHasNext(Boolean(data.has_next));
-        setHasPrev(Boolean(data.has_prev));
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : '查询通知失败';
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [authState.isAuthenticated, isRead]
-  );
+  const loadNotifications = useCallback(async (targetPage: number) => {
+    if (identity == null) return;
+    const version = ++requestVersion.current;
+    const current = () => version === requestVersion.current && identity === identityRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get<NotificationListData>('/api/v1/notifications', {
+        params: { page: targetPage, limit: PAGE_SIZE }
+      });
+      if (!current()) return;
+      const data = response.data || {};
+      const records = Array.isArray(data.items) ? data.items : [];
+      const totalCount = typeof data.total === 'number' ? data.total : records.length;
+      setItems(records);
+      setTotal(totalCount);
+      setUnreadCount(typeof data.unread_count === 'number' ? data.unread_count : records.filter(item => !isRead(item)).length);
+      setHasNext(data.has_next ?? targetPage * PAGE_SIZE < totalCount);
+      setHasPrev(data.has_prev ?? targetPage > 1);
+    } catch (error) {
+      if (current()) setError(error instanceof Error ? error.message : '查询通知失败');
+    } finally {
+      if (current()) setLoading(false);
+    }
+  }, [identity, isRead]);
 
   useEffect(() => {
-    loadNotifications(page);
+    // 账号变化时取消旧响应并回到第一页，避免显示上个账号的通知。
+    requestVersion.current += 1;
+    setItems([]);
+    setTotal(0);
+    setUnreadCount(0);
+    setPage(1);
+    setHasNext(false);
+    setHasPrev(false);
+    setLoading(false);
+    setError(null);
+    actionPending.current = false;
+    setMarkingId(null);
+    setDeletingId(null);
+  }, [identity]);
+
+  useEffect(() => {
+    void loadNotifications(page);
+    return () => { requestVersion.current += 1; };
   }, [loadNotifications, page]);
 
-  const handleMarkRead = useCallback(
-    async (item: NotificationItem) => {
-      const id = getNotificationId(item);
-      if (!id || isRead(item)) return;
-      setMarkingId(id);
-      try {
-        await apiClient.post(`/api/v1/notifications/${encodeURIComponent(id)}/read`);
-        setItems((prev) =>
-          prev.map((record) => {
-            if (getNotificationId(record) !== id) return record;
-            return {
-              ...record,
-              status: '已读',
-              is_read: true,
-              read: true,
-              read_time: new Date().toISOString()
-            };
-          })
-        );
-        setUnreadCount((prev) => (prev > 0 ? prev - 1 : 0));
-      } catch (markError) {
-        const message = markError instanceof Error ? markError.message : '标记已读失败';
-        setError(message);
-      } finally {
+  const mutateNotification = useCallback(async (item: NotificationItem, action: 'read' | 'delete') => {
+    const id = getNotificationId(item);
+    if (!id || identity == null || actionPending.current || (action === 'read' && isRead(item))) return;
+    actionPending.current = true;
+    requestVersion.current += 1;
+    setError(null);
+    if (action === 'read') setMarkingId(id);
+    else setDeletingId(id);
+    try {
+      const endpoint = `/api/v1/notifications/${encodeURIComponent(id)}`;
+      if (action === 'read') await apiClient.post(`${endpoint}/read`);
+      else await apiClient.delete(endpoint);
+      if (identityRef.current !== identity) return;
+      // 删除最后一项时退回上一页，并从服务端重算数量和分页状态。
+      const targetPage = action === 'delete' && items.length === 1 ? Math.max(1, page - 1) : page;
+      if (targetPage !== page) setPage(targetPage);
+      else await loadNotifications(targetPage);
+    } catch (error) {
+      if (identityRef.current === identity) setError(error instanceof Error ? error.message : '通知操作失败');
+    } finally {
+      if (identityRef.current === identity) {
+        actionPending.current = false;
         setMarkingId(null);
-      }
-    },
-    [getNotificationId, isRead]
-  );
-
-  const handleDelete = useCallback(
-    async (item: NotificationItem) => {
-      const id = getNotificationId(item);
-      if (!id) return;
-      setDeletingId(id);
-      setError(null);
-      try {
-        await apiClient.delete(`/api/v1/notifications/${encodeURIComponent(id)}`);
-        const deletedUnread = !isRead(item);
-        setItems((prev) => prev.filter((record) => getNotificationId(record) !== id));
-        setTotal((prev) => Math.max(0, prev - 1));
-        if (deletedUnread) {
-          setUnreadCount((prev) => (prev > 0 ? prev - 1 : 0));
-        }
-      } catch (deleteError) {
-        const message = deleteError instanceof Error ? deleteError.message : '删除通知失败';
-        setError(message);
-      } finally {
         setDeletingId(null);
       }
-    },
-    [getNotificationId, isRead]
-  );
+    }
+  }, [getNotificationId, identity, isRead, items.length, page, loadNotifications]);
+
+  const handleMarkRead = (item: NotificationItem) => mutateNotification(item, 'read');
+  const handleDelete = (item: NotificationItem) => mutateNotification(item, 'delete');
 
   const totalPages = useMemo(() => {
     if (total <= 0) return 1;
@@ -200,7 +191,7 @@ const NotificationsPage: React.FC = () => {
             <button className="ghost-btn" onClick={() => navigate('/')}>
               返回主页
             </button>
-            <button className="primary-btn" onClick={() => loadNotifications(page)} disabled={loading}>
+            <button className="primary-btn" onClick={() => loadNotifications(page)} disabled={loading || !!markingId || !!deletingId}>
               {loading ? '刷新中...' : '刷新'}
             </button>
           </div>
@@ -228,7 +219,7 @@ const NotificationsPage: React.FC = () => {
                     </div>
                     <p>{item.message || item.content || '暂无内容'}</p>
                     <div className="notification-meta">
-                      <span>发送时间：{formatDateTime(item.sent_at || item.created_at)}</span>
+                      <span>发送时间：{formatDateTime(item.sent_at || item.send_time || item.created_at)}</span>
                       {item.read_time && <span>已读时间：{formatDateTime(item.read_time)}</span>}
                     </div>
                   </div>
@@ -237,7 +228,7 @@ const NotificationsPage: React.FC = () => {
                       <button
                         className="mark-read-btn"
                         onClick={() => handleMarkRead(item)}
-                        disabled={markingId === getNotificationId(item) || deletingId === getNotificationId(item)}
+                        disabled={!!markingId || !!deletingId || loading}
                       >
                         {markingId === getNotificationId(item) ? '处理中...' : '标记已读'}
                       </button>
@@ -246,7 +237,7 @@ const NotificationsPage: React.FC = () => {
                       <button
                         className="delete-btn"
                         onClick={() => handleDelete(item)}
-                        disabled={deletingId === getNotificationId(item) || markingId === getNotificationId(item)}
+                        disabled={!!markingId || !!deletingId || loading}
                       >
                         {deletingId === getNotificationId(item) ? '删除中...' : '删除'}
                       </button>
@@ -263,10 +254,10 @@ const NotificationsPage: React.FC = () => {
             第 {page} / {totalPages} 页
           </span>
           <div className="pagination-actions">
-            <button className="ghost-btn" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={!hasPrev || loading}>
+            <button className="ghost-btn" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={!hasPrev || loading || !!markingId || !!deletingId}>
               上一页
             </button>
-            <button className="ghost-btn" onClick={() => setPage((prev) => prev + 1)} disabled={!hasNext || loading}>
+            <button className="ghost-btn" onClick={() => setPage((prev) => prev + 1)} disabled={!hasNext || loading || !!markingId || !!deletingId}>
               下一页
             </button>
           </div>

@@ -2,7 +2,7 @@
  * 工作流设计步骤组件 - Apple风格设计
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Space,
@@ -15,7 +15,9 @@ import {
   Input,
   Select,
   Tabs,
-  Spin
+  Spin,
+  Alert,
+  Empty
 } from 'antd';
 import { UnifiedCard } from '../common';
 import {
@@ -23,11 +25,6 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  PlayCircleOutlined,
-  ApiOutlined,
-  FormOutlined,
-  NotificationOutlined,
-  StopOutlined,
   EyeOutlined
 } from '@ant-design/icons';
 import WorkflowCanvas from '../workflow/WorkflowCanvas';
@@ -46,182 +43,75 @@ interface WorkflowDesignStepProps {
   onPrev?: () => void;
 }
 
-// 示例工作流数据
-const sampleWorkflows = [
-  {
-    id: 'workflow_1',
-    name: '用户查询处理流程',
-    description: '处理用户查询请求的标准流程',
-    business_scenario: 'customer_service',
-    nodeCount: 5,
-    status: 'active'
-  },
-  {
-    id: 'workflow_2',
-    name: '订单处理流程',
-    description: '从下单到发货的完整订单处理流程',
-    business_scenario: 'order_management',
-    nodeCount: 8,
-    status: 'draft'
-  },
-  {
-    id: 'workflow_3',
-    name: '用户反馈处理',
-    description: '收集和处理用户反馈的工作流',
-    business_scenario: 'feedback_management',
-    nodeCount: 6,
-    status: 'active'
-  }
-];
-
-// 节点类型配置（已移除 user_input）
-const nodeTypes = [
-  { type: 'start', label: '开始节点', icon: <PlayCircleOutlined />, color: '#52c41a' },
-  { type: 'api_call', label: 'API调用', icon: <ApiOutlined />, color: '#1890ff' },
-  { type: 'notification', label: '通知节点', icon: <NotificationOutlined />, color: '#eb2f96' },
-  { type: 'end', label: '结束节点', icon: <StopOutlined />, color: '#f5222d' }
-];
+interface WorkflowCard {
+  id: string;
+  name: string;
+  description: string;
+  business_scenario: string;
+  nodeCount: number;
+  status: string;
+}
 
 const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev }) => {
   const { authState } = useDeveloperAuth();
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [workflows, setWorkflows] = useState(sampleWorkflows);
+  const [workflows, setWorkflows] = useState<WorkflowCard[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowDefinition | null>(null);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
   const [form] = Form.useForm();
+  const [loadError, setLoadError] = useState('');
+  const [detailError, setDetailError] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const selectedIdRef = useRef<string | null>(null);
+  const listVersion = useRef(0);
+  const detailVersion = useRef(0);
+  // 使用正式客户端的开发者身份，生产环境没有调试用的 window.apiClient。
+  const isAuthenticated = Boolean((authState.isAuthenticated && authState.token) || apiClient.getDeveloperToken());
 
-  // 加载工作流列表
+
+  // 列表失败显示可重试错误，不能把虚构示例当成已保存的业务配置。
   const loadWorkflows = useCallback(async () => {
+    const version = ++listVersion.current;
+    if (!isAuthenticated) { setWorkflows([]); return; }
+    setLoading(true);
+    setLoadError('');
     try {
-      setLoading(true);
-
-      // 调试认证状态
-      console.log('loadWorkflows - isAuthenticated:', authState.isAuthenticated);
-      console.log('loadWorkflows - token exists:', !!authState.token);
-
-      // 检查是否有认证token（优先检查apiClient中的token，因为它可能先于authState更新）
-      const apiToken = apiClient.getToken();
-      const hasValidToken = (authState.token && !authState.token.includes('fake-token')) || 
-                           (apiToken && !apiToken.includes('fake-token'));
-      const isAuthenticated = authState.isAuthenticated || hasValidToken; // 只要有有效token就认为已认证
-      console.log('loadWorkflows - apiClient has token:', !!apiToken);
-      console.log('loadWorkflows - has valid token:', hasValidToken);
-
-      // 如果有有效的认证token，就调用API
-      if (isAuthenticated && hasValidToken) {
-        const response = await workflowAPI.getWorkflowsList({ page: 1, limit: 50 });
-
-        if (response.code === 200 && response.data) {
-          // 转换API数据格式以匹配本地结构
-          const convertedWorkflows = response.data.workflows.map(workflow => ({
-            id: workflow.id,
-            name: workflow.name,
-            description: workflow.description,
-            business_scenario: workflow.business_scenario,
-            nodeCount: workflow.node_count,
-            status: workflow.status.toLowerCase(),  // 🔥 转换为小写以匹配前端期望
-            complexity: 'medium', // 后端没有complexity字段，使用默认值
-            version: workflow.version,
-            instance_count: workflow.instance_count,
-            created_at: workflow.created_at,
-            updated_at: workflow.updated_at
-          }));
-          setWorkflows(convertedWorkflows);
-        } else {
-          message.error(response.message || '加载工作流列表失败');
-          // 如果API失败，使用示例数据作为后备
-          setWorkflows(sampleWorkflows);
-        }
-      } else {
-        // 未认证时使用示例数据
-        setWorkflows(sampleWorkflows);
-      }
+      const response = await workflowAPI.getWorkflowsList({ page: 1, limit: 100 });
+      if (version !== listVersion.current) return;
+      setWorkflows(response.data.workflows.map(workflow => ({
+        ...workflow, nodeCount: workflow.node_count, status: workflow.status.toLowerCase()
+      })));
     } catch (error) {
-      console.error('Failed to load workflows:', error);
-      message.error('加载工作流列表失败');
-      // 如果API失败，使用示例数据作为后备
-      setWorkflows(sampleWorkflows);
+      if (version === listVersion.current) {
+        setWorkflows([]);
+        setLoadError(error instanceof Error ? error.message : '加载工作流列表失败');
+      }
     } finally {
-      setLoading(false);
+      if (version === listVersion.current) setLoading(false);
     }
-  }, [authState.isAuthenticated, authState.token]);
+  }, [isAuthenticated]);
 
-  // 加载工作流详情
-  const loadWorkflowDetail = async (workflowId: string) => {
-    try {
-      // 检查apiClient是否有token（更可靠的方式）
-      const hasApiToken = !!(window as any).apiClient?.getToken?.();
-      console.log('loadWorkflowDetail - apiClient has token:', hasApiToken);
-
-      // 只有在认证成功时才调用API
-      if (hasApiToken) {
-        console.log('loadWorkflowDetail - 调用API获取工作流详情:', workflowId);
-        const response = await workflowAPI.getWorkflowDetail(workflowId);
-
-        if (response.code === 200 && response.data) {
-          console.log('loadWorkflowDetail - API调用成功:', response.data);
-          setCurrentWorkflow(response.data.workflow);
-          return;
-        } else {
-          console.error('loadWorkflowDetail - API调用失败:', response);
-          message.error(response.message || '加载工作流详情失败');
-        }
-      } else {
-        console.log('loadWorkflowDetail - 未认证，跳过API调用');
-      }
-
-      // 如果API失败或未认证，使用示例数据作为后备
-      const workflow = sampleWorkflows.find(w => w.id === workflowId);
-      if (workflow) {
-        const fullWorkflow: WorkflowDefinition = {
-          id: workflow.id,
-          name: workflow.name,
-          description: workflow.description,
-          business_scenario: workflow.business_scenario,
-          user_intents: [],
-          trigger_keywords: [],
-          inputs: [],
-          nodes: [],
-          metadata: {
-            complexity: 'medium',
-            tags: [workflow.business_scenario]
-          }
-        };
-        setCurrentWorkflow(fullWorkflow);
-      }
-    } catch (error) {
-      console.error('Failed to load workflow detail:', error);
-      message.error('加载工作流详情失败');
-      // 如果API失败，使用示例数据作为后备
-      const workflow = sampleWorkflows.find(w => w.id === workflowId);
-      if (workflow) {
-        const fullWorkflow: WorkflowDefinition = {
-          id: workflow.id,
-          name: workflow.name,
-          description: workflow.description,
-          business_scenario: workflow.business_scenario,
-          user_intents: [],
-          trigger_keywords: [],
-          inputs: [],
-          nodes: [],
-          metadata: {
-            complexity: 'medium',
-            tags: [workflow.business_scenario]
-          }
-        };
-        setCurrentWorkflow(fullWorkflow);
-      }
-    }
-  };
-
-  // 选择工作流
   const handleSelectWorkflow = async (workflowId: string) => {
+    const version = ++detailVersion.current;
+    selectedIdRef.current = workflowId;
     setSelectedWorkflow(workflowId);
-    await loadWorkflowDetail(workflowId);
+    setCurrentWorkflow(null);
+    setDetailError('');
+    setDetailLoading(true);
     setActiveTab('design');
+    try {
+      const response = await workflowAPI.getWorkflowDetail(workflowId);
+      // 连续点选时仅接受最后一次请求，防止把 A 的节点保存到 B。
+      if (version !== detailVersion.current || selectedIdRef.current !== workflowId) return;
+      setCurrentWorkflow(response.data.workflow);
+    } catch (error) {
+      if (version === detailVersion.current) setDetailError(error instanceof Error ? error.message : '加载工作流详情失败');
+    } finally {
+      if (version === detailVersion.current) setDetailLoading(false);
+    }
   };
 
   const handleCreateWorkflow = () => {
@@ -269,9 +159,8 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
       };
 
       // 添加到本地列表并选中
-      setWorkflows([...workflows, newWorkflow]);
-      setSelectedWorkflow(newWorkflow.id);
-      setActiveTab('design');
+      setWorkflows(previous => [...previous, newWorkflow]);
+      await handleSelectWorkflow(newWorkflow.id);
 
       message.success('工作流创建成功');
       setModalVisible(false);
@@ -294,9 +183,11 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
       console.log('📥 删除响应:', response);
 
       // 从本地列表删除
-      setWorkflows(workflows.filter(w => w.id !== workflowId));
+      setWorkflows(previous => previous.filter(w => w.id !== workflowId));
 
-      if (selectedWorkflow === workflowId) {
+      if (selectedIdRef.current === workflowId) {
+        detailVersion.current += 1;
+        selectedIdRef.current = null;
         setSelectedWorkflow(null);
         setCurrentWorkflow(null);
       }
@@ -308,81 +199,39 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
     }
   };
 
-  // 验证工作流
-  const handleValidateWorkflow = async () => {
-    if (!selectedWorkflow) return;
-
-    try {
-      // 暂时模拟验证结果
-      message.success('工作流验证通过');
-    } catch (error) {
-      message.error('工作流验证失败');
-    }
-  };
-
-  // 测试工作流
-  const handleTestWorkflow = async () => {
-    if (!selectedWorkflow) return;
-
-    try {
-      // 暂时模拟测试结果
-      message.success('工作流测试完成');
-    } catch (error) {
-      message.error('工作流测试失败');
-    }
-  };
-
-  // 保存工作流设计
+  // 保存设计保留草稿/停用状态；启用由独立按钮触发并接受后端完整校验。
   const handleSaveWorkflowDesign = async (workflow: WorkflowDefinition) => {
-    if (!selectedWorkflow) return;
+    const id = workflow.id;
+    if (!isAuthenticated || !id || id !== selectedIdRef.current) throw new Error('请重新选择工作流');
+    const updateRequest: WorkflowUpdateRequest = {
+      name: workflow.name, description: workflow.description,
+      business_scenario: workflow.business_scenario,
+      user_intents: workflow.user_intents || [], trigger_keywords: workflow.trigger_keywords || [],
+      inputs: workflow.inputs || [], nodes: workflow.nodes || [],
+      metadata: { tags: workflow.metadata?.tags || [], complexity: workflow.metadata?.complexity || 'medium' }
+    };
+    const response = await workflowAPI.updateWorkflow(id, updateRequest);
+    if (selectedIdRef.current !== id) return;
+    const saved = response.data.workflow;
+    setCurrentWorkflow(saved);
+    setWorkflows(previous => previous.map(item => item.id === id
+      ? { ...item, name: saved.name, description: saved.description, nodeCount: saved.nodes.length } : item));
+    message.success('工作流设计已保存');
+  };
 
+  const handleToggleStatus = async () => {
+    const id = selectedIdRef.current;
+    const current = workflows.find(item => item.id === id);
+    if (!id || !current || !currentWorkflow) return;
+    const status = current.status === 'active' ? 'inactive' : 'active';
+    setLoading(true);
     try {
-      // 检查是否有有效的认证token
-      const apiToken = apiClient.getToken();
-      const hasValidToken = (authState.token && !authState.token.includes('fake-token')) || 
-                           (apiToken && !apiToken.includes('fake-token'));
-      const isAuthenticated = authState.isAuthenticated || hasValidToken; // 只要有有效token就认为已认证
-      console.log('handleSaveWorkflowDesign - apiClient has token:', !!apiToken);
-      console.log('handleSaveWorkflowDesign - has valid token:', hasValidToken);
-
-      // 只有在认证成功时才调用API
-      if (isAuthenticated && hasValidToken) {
-
-        // 构建符合API文档要求的请求数据
-        const updateRequest: WorkflowUpdateRequest = {
-          name: workflow.name,
-          description: workflow.description,
-          business_scenario: workflow.business_scenario,
-          status: 'active' as const, // 添加状态字段
-          user_intents: workflow.user_intents || [],
-          trigger_keywords: workflow.trigger_keywords || [],
-          inputs: workflow.inputs || [],
-          nodes: workflow.nodes || [],
-          metadata: {
-            tags: workflow.metadata?.tags || [],
-            complexity: workflow.metadata?.complexity || 'medium'
-          }
-        };
-
-        const response = await workflowAPI.updateWorkflow(selectedWorkflow, updateRequest);
-
-        console.log('📥 后端响应:', response);
-
-        if (response.code === 200) {
-          setCurrentWorkflow(workflow);
-          message.success('工作流设计已保存');
-        } else {
-          message.error(response.message || '保存工作流失败');
-        }
-      } else {
-        // 未认证时只在本地保存
-        setCurrentWorkflow(workflow);
-        message.success('工作流设计已保存（本地）');
-      }
+      await workflowAPI.updateWorkflow(id, { status });
+      setWorkflows(previous => previous.map(item => item.id === id ? { ...item, status } : item));
+      message.success(status === 'active' ? '已保存的工作流已启用' : '工作流已停用');
     } catch (error) {
-      console.error('Failed to save workflow:', error);
-      message.error('保存工作流失败');
-    }
+      message.error(error instanceof Error ? error.message : '工作流状态更新失败');
+    } finally { setLoading(false); }
   };
 
   // 节点选择处理
@@ -392,17 +241,12 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
 
   // 组件挂载时加载数据
   useEffect(() => {
-    loadWorkflows();
+    void loadWorkflows();
+    return () => { listVersion.current += 1; detailVersion.current += 1; };
   }, [loadWorkflows]);
 
-  // 检查认证状态
-  const apiToken = apiClient.getToken();
-  const hasValidToken = (authState.token && !authState.token.includes('fake-token')) || 
-                       (apiToken && !apiToken.includes('fake-token'));
-  const isAuthenticated = authState.isAuthenticated || hasValidToken; // 只要有有效token就认为已认证
-
   // 如果未认证，显示认证要求组件
-  if (!isAuthenticated || !hasValidToken) {
+  if (!isAuthenticated) {
     return (
       <div className="workflow-design-step">
         <div className="step-header">
@@ -439,6 +283,9 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
             </div>
           </div>
           <div className="unified-step-actions">
+            {currentWorkflow && <Button loading={loading} onClick={handleToggleStatus}>
+              {workflows.find(item => item.id === selectedWorkflow)?.status === 'active' ? '停用工作流' : '启用已保存工作流'}
+            </Button>}
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -461,6 +308,8 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
               label: '工作流列表',
               children: (
                 <div className="workflow-list">
+                  {loadError && <Alert type="error" message={loadError} action={<Button onClick={loadWorkflows}>重试</Button>} />}
+                  {!loading && !loadError && workflows.length === 0 && <Empty description="暂无工作流，请创建工作流" />}
                   <Spin spinning={loading}>
                     <Row gutter={[16, 16]}>
                       {workflows.map(workflow => (
@@ -480,10 +329,6 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
                               <DeleteOutlined key="delete" onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteWorkflow(workflow.id);
-                              }} />,
-                              <PlayCircleOutlined key="test" onClick={(e) => {
-                                e.stopPropagation();
-                                handleTestWorkflow();
                               }} />
                             ]}
                           >
@@ -494,7 +339,7 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
                             <div className="workflow-meta">
                               <Tag color="blue">{workflow.business_scenario}</Tag>
                               <Tag color={workflow.status === 'active' ? 'green' : 'orange'}>
-                                {workflow.status === 'active' ? '活跃' : '草稿'}
+                                {workflow.status === 'active' ? '活跃' : workflow.status === 'inactive' ? '停用' : '草稿'}
                               </Tag>
                               <span className="node-count">{workflow.nodeCount || 0} 个节点</span>
                             </div>
@@ -512,12 +357,17 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
               disabled: !selectedWorkflow,
               children: selectedWorkflow ? (
                 <div className="workflow-design-area" style={{ height: '600px' }}>
-                  <WorkflowCanvas
-                    workflowId={selectedWorkflow}
-                    workflow={currentWorkflow || undefined}
-                    onSave={handleSaveWorkflowDesign}
-                    onNodeSelect={handleNodeSelect}
-                  />
+                  {detailLoading ? <Spin tip="正在加载工作流..." /> : detailError ? (
+                    <Alert type="error" message={detailError} action={<Button onClick={() => handleSelectWorkflow(selectedWorkflow)}>重试</Button>} />
+                  ) : currentWorkflow?.id === selectedWorkflow ? (
+                    <WorkflowCanvas
+                      key={selectedWorkflow}
+                      workflowId={selectedWorkflow}
+                      workflow={currentWorkflow}
+                      onSave={handleSaveWorkflowDesign}
+                      onNodeSelect={handleNodeSelect}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <div className="no-workflow-selected">
@@ -600,7 +450,7 @@ const WorkflowDesignStep: React.FC<WorkflowDesignStepProps> = ({ onNext, onPrev 
               <Button onClick={() => setModalVisible(false)}>
                 取消
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={loading}>
                 创建
               </Button>
             </Space>

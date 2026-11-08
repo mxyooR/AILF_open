@@ -64,6 +64,7 @@ import { routeAPI } from '../../../services/developer/routeAPI';
 import { servicePackageAPI } from '../../../services/developer/servicePackageAPI';
 import { authAPI } from '../../../services/developer/authAPI';
 import DynamicAPIService from '../../../services/common/dynamicAPI';
+import { ensureFileResponse } from '../../../services/common/fileResponse';
 import DynamicResponseConfig from '../DynamicResponseConfig';
 import { tokenManager } from '../../../services/common/tokenManager';
 
@@ -533,9 +534,7 @@ const APIRouteStep: React.FC<APIRouteStepProps> = ({ onNext, onPrev }) => {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined
         });
 
-        if (!response.ok) {
-          throw new Error(`请求失败 (${response.status})`);
-        }
+        await ensureFileResponse(response);
 
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.startsWith('image/')) {
@@ -590,9 +589,7 @@ const APIRouteStep: React.FC<APIRouteStepProps> = ({ onNext, onPrev }) => {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined
         });
 
-        if (!response.ok) {
-          throw new Error(`请求失败 (${response.status})`);
-        }
+        await ensureFileResponse(response);
 
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
         const disposition = response.headers.get('content-disposition') || '';
@@ -913,6 +910,11 @@ const APIRouteStep: React.FC<APIRouteStepProps> = ({ onNext, onPrev }) => {
               headers,
               body: methodHasBody && Object.keys(requestData).length > 0 ? JSON.stringify(requestData) : undefined
             });
+            // 与单项测试保持一致，JSON 错误或非图片响应不能显示成“测试成功”。
+            await ensureFileResponse(response);
+            if (handlerType === 'image_display' && !(response.headers.get('content-type') || '').startsWith('image/')) {
+              throw new Error('响应不是图片');
+            }
             results.push({
               key: route.id,
               routeName: route.name,

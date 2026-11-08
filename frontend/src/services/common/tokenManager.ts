@@ -27,8 +27,9 @@ interface SetTokenOptions {
   rememberMe?: boolean;
 }
 
-class TokenManager {
+export class TokenManager {
   private tokenInfo: TokenInfo | null = null;
+  private refreshPromise: Promise<string | null> | null = null;
   private config: Required<TokenManagerConfig>;
   private refreshTimer: NodeJS.Timeout | null = null;
   private listeners: Array<(isAuthenticated: boolean) => void> = [];
@@ -186,7 +187,8 @@ class TokenManager {
     }
 
     const remainingTime = this.getRemainingTime(this.tokenInfo);
-    const refreshTime = Math.max(0, remainingTime - this.config.refreshThreshold);
+    const refreshTime = Math.max(1, remainingTime > this.config.refreshThreshold
+      ? remainingTime - this.config.refreshThreshold : Math.floor(remainingTime / 2));
 
     if (refreshTime > 0) {
       this.refreshTimer = setTimeout(() => {
@@ -199,39 +201,38 @@ class TokenManager {
     void this.refreshToken();
   }
 
-  /**
-   * 刷新token
-   */
-  private async refreshToken(): Promise<void> {
-    if (!this.tokenInfo?.refreshToken) {
-      console.error('No refresh token available.');
-      this.clearToken();
-      return;
-    }
-
-    try {
-      console.log('Refreshing token...');
-      const response = await authAPI.refreshToken({
-        refresh_token: this.tokenInfo.refreshToken,
-      });
-
-      if (response.code === 200) {
+  /** 定时刷新和 401 重试共用一个请求；旧会话响应不能复活已退出的开发者身份。 */
+  refreshToken(): Promise<string | null> {
+    if (this.refreshPromise) return this.refreshPromise;
+    const snapshot = this.tokenInfo;
+    if (!snapshot?.refreshToken) { this.clearToken(); return Promise.resolve(null); }
+    const attempt = (async () => {
+      try {
+        const response = await authAPI.refreshToken({ refresh_token: snapshot.refreshToken });
+        if (this.tokenInfo !== snapshot) return null;
+        if (response.code !== 200) { this.clearToken(); return null; }
         this.setToken(response.data);
-        console.log('Token refreshed successfully');
-      } else {
-        console.error('Token refresh failed:', response.message);
-        this.clearToken();
+        return response.data.token;
+      } catch (error: any) {
+        if (this.tokenInfo !== snapshot) return null;
+        if ([400, 401, 403].includes(error.status) || !this.isTokenValid(snapshot)) this.clearToken();
+        else if (this.config.autoRefresh) {
+          const remaining = this.getRemainingTime(snapshot);
+          this.refreshTimer = setTimeout(() => { void this.refreshToken(); }, Math.max(1, Math.min(30, remaining)) * 1000);
+        }
+        return null;
       }
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      this.clearToken();
-    }
+    })();
+    this.refreshPromise = attempt;
+    void attempt.finally(() => { if (this.refreshPromise === attempt) this.refreshPromise = null; });
+    return attempt;
   }
 
   /**
    * 设置token
    */
   setToken(authData: DeveloperAuthResponse['data'], options: SetTokenOptions = {}): void {
+    this.refreshPromise = null;
     const rememberMe = options.rememberMe;
     if (rememberMe !== undefined) {
       this.storageMode = rememberMe ? 'local' : 'session';
@@ -259,6 +260,7 @@ class TokenManager {
    */
   clearToken(): void {
     this.tokenInfo = null;
+    this.refreshPromise = null;
     this.clearStorage();
 
     if (this.refreshTimer) {
@@ -302,14 +304,18 @@ class TokenManager {
    * 验证当前token
    */
   async verifyCurrentToken(): Promise<boolean> {
-    if (!this.tokenInfo) {
+    const snapshot = this.tokenInfo;
+    if (!snapshot) {
       return false;
     }
 
     try {
       const response = await authAPI.verifyToken({
-        token: this.tokenInfo.token,
+        token: snapshot.token,
       });
+
+      // 校验期间已退出、刷新或重新登录时，旧结果不能修改新会话。
+      if (this.tokenInfo !== snapshot) return false;
 
       if (response.code === 200 && response.data.valid) {
         return true;
@@ -317,9 +323,11 @@ class TokenManager {
 
       this.clearToken();
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Token verification failed:', error);
-      this.clearToken();
+      if (this.tokenInfo === snapshot && ([400, 401, 403].includes(error.status) || !this.isTokenValid(snapshot))) {
+        this.clearToken();
+      }
       return false;
     }
   }

@@ -69,3 +69,23 @@ test('API errors preserve HTTP status and explicit user authentication never ref
   expect(result.statusCode).toBe(403);
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
+
+test.each([
+  { code: 409, message: '记录冲突' },
+  { status: 1, msg: '删除失败' },
+  { code: 200, success: false, message: '保存失败' }
+])('shared client rejects HTTP 200 business failures before callers update the UI: %j', async payload => {
+  respond(200, payload);
+  await expect(apiClient.post('/api/v1/notifications/fixture/read')).rejects.toThrow(payload.message || payload.msg);
+});
+
+test('upload with HTTP 200 and a business error is reported as failed', async () => {
+  const originalFormData = global.FormData;
+  global.FormData = class { append() {} };
+  global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ code: 409, message: '文件类型不支持' }) });
+  try {
+    const result = await DynamicAPIService.uploadFile('/api/v1/fixture/upload', {});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('文件类型不支持');
+  } finally { global.FormData = originalFormData; }
+});

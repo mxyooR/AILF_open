@@ -52,8 +52,11 @@ export const authAPI = {
    * 开发者登出
    * POST /api/v1/auth/developer/logout
    */
-  async logout(): Promise<void> {
-    await apiClient.post('/api/v1/auth/developer/logout');
+  async logout(token?: string): Promise<void> {
+    // 调用方先清本地身份；显式携带退出前的令牌，不能误用随后登录的新身份。
+    await apiClient.execute('/api/v1/auth/developer/logout', {
+      method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   },
 
   /**

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Modal, Form, Input, InputNumber, Switch, DatePicker, Select, Alert } from 'antd';
 import { Entity, EntityField, EntityDataRecord } from '../../../types/developer/entity';
-import dayjs from 'dayjs';
+import { recordToFormValues, formValuesToRecord } from './recordFormValues';
 
 const { TextArea } = Input;
 
@@ -25,6 +25,8 @@ const getFieldControl = (field: EntityField) => {
   };
 
   switch (field.type) {
+    case 'json':
+      return <TextArea {...commonProps} rows={5} placeholder="请输入 JSON 对象、数组或其他 JSON 值" />;
     case 'text':
       // 如果有最大长度限制且较大，使用TextArea
       if (field.validation?.max && field.validation.max > 200) {
@@ -139,7 +141,7 @@ const getFieldRules = (field: EntityField) => {
   }
 
   // 数值范围验证
-  if (field.type === 'number' && field.validation) {
+  if ((field.type === 'number' || field.type === 'decimal') && field.validation) {
     if (field.validation.min !== undefined) {
       rules.push({
         type: 'number',
@@ -179,61 +181,12 @@ const getFieldRules = (field: EntityField) => {
     }
   }
 
+  if (field.type === 'email') rules.push({ type: 'email', message: '请输入有效的邮箱地址' });
+  if (field.type === 'json') rules.push({ validator: async (_: any, value: any) => {
+    if (value == null || value === '') return;
+    try { JSON.parse(value); } catch { throw new Error('请输入有效的 JSON'); }
+  } });
   return rules;
-};
-
-/**
- * 将记录数据转换为表单值
- */
-const recordToFormValues = (record: EntityDataRecord | null, fields: EntityField[]) => {
-  if (!record) return {};
-
-  const values: Record<string, any> = {};
-  
-  fields.forEach((field) => {
-    const value = record[field.name];
-    
-    if (value === undefined || value === null) {
-      values[field.name] = field.defaultValue;
-      return;
-    }
-
-    // 日期类型需要转换为dayjs对象
-    if ((field.type === 'date' || field.type === 'datetime') && value) {
-      values[field.name] = dayjs(value);
-    } else {
-      values[field.name] = value;
-    }
-  });
-
-  return values;
-};
-
-/**
- * 将表单值转换为提交数据
- */
-const formValuesToRecord = (values: Record<string, any>, fields: EntityField[]) => {
-  const data: Record<string, any> = {};
-
-  fields.forEach((field) => {
-    const value = values[field.name];
-
-    if (value === undefined || value === null) {
-      if (field.required) {
-        data[field.name] = field.defaultValue || null;
-      }
-      return;
-    }
-
-    // 日期类型需要转换为ISO字符串
-    if ((field.type === 'date' || field.type === 'datetime') && value) {
-      data[field.name] = value.toISOString();
-    } else {
-      data[field.name] = value;
-    }
-  });
-
-  return data;
 };
 
 const DynamicRecordForm: React.FC<DynamicRecordFormProps> = ({
@@ -250,19 +203,9 @@ const DynamicRecordForm: React.FC<DynamicRecordFormProps> = ({
   // 当记录变化时，重置表单
   useEffect(() => {
     if (visible) {
-      if (mode === 'edit' && record) {
-        const formValues = recordToFormValues(record, entity.fields || []);
-        form.setFieldsValue(formValues);
-      } else {
-        // 创建模式，设置默认值
-        const defaultValues: Record<string, any> = {};
-        entity.fields?.forEach((field) => {
-          if (field.defaultValue !== undefined) {
-            defaultValues[field.name] = field.defaultValue;
-          }
-        });
-        form.setFieldsValue(defaultValues);
-      }
+      // 切换记录/新建时先清理旧值，避免上次表单的数据混入新记录。
+      form.resetFields();
+      form.setFieldsValue(recordToFormValues(mode === 'edit' ? record : null, entity.fields || []));
     }
   }, [visible, mode, record, entity.fields, form]);
 
@@ -271,8 +214,8 @@ const DynamicRecordForm: React.FC<DynamicRecordFormProps> = ({
     try {
       const values = await form.validateFields();
       const data = formValuesToRecord(values, entity.fields || []);
+      // 由父组件在保存成功后关闭；失败时保留输入，便于更正并重试。
       await onSubmit(data);
-      form.resetFields();
     } catch (error) {
       console.error('表单验证失败:', error);
     }

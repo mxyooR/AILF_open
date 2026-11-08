@@ -1400,7 +1400,8 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-.dev-menu-container:hover .dev-menu-dropdown {
+/* 显隐统一由按钮状态控制，避免 Escape 后悬停或焦点仍强制把菜单打开。 */
+.dev-menu-container.is-open .dev-menu-dropdown {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);

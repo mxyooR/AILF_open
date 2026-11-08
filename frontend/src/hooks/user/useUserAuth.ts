@@ -42,9 +42,11 @@ export const useUserAuth = () => {
   });
 
   const isMountedRef = useRef(true);
+  const loginRequestIdRef = useRef(0);
 
   // 初始化认证状态
   useEffect(() => {
+    isMountedRef.current = true;
     const initializeAuth = () => {
       const isAuthenticated = userTokenManager.isAuthenticated();
       const user = userTokenManager.getUserInfo();
@@ -77,6 +79,7 @@ export const useUserAuth = () => {
 
     return () => {
       isMountedRef.current = false;
+      loginRequestIdRef.current++;
       userTokenManager.removeListener(handleAuthChange);
     };
   }, []);
@@ -86,6 +89,8 @@ export const useUserAuth = () => {
    */
   const login = useCallback(async (formData: LoginFormData): Promise<AuthResult> => {
     if (!isMountedRef.current) return { success: false, error: 'Component unmounted' };
+    const requestId = ++loginRequestIdRef.current;
+    const snapshot = userTokenManager.getTokenInfo();
 
     setAuthState(prev => ({
       ...prev,
@@ -103,6 +108,11 @@ export const useUserAuth = () => {
       });
 
       const data = await response.json();
+
+      // 退出、卸载或另一登录已经生效时，旧响应不能再写入全局用户身份。
+      if (!isMountedRef.current || requestId !== loginRequestIdRef.current || userTokenManager.getTokenInfo() !== snapshot) {
+        return { success: false, error: '登录请求已失效' };
+      }
 
       if (response.ok && data.code === 200) {
         // 登录成功，设置token
@@ -142,7 +152,7 @@ export const useUserAuth = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '网络错误，请重试';
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestId === loginRequestIdRef.current && userTokenManager.getTokenInfo() === snapshot) {
         setAuthState(prev => ({
           ...prev,
           isLoading: false,
@@ -177,7 +187,8 @@ export const useUserAuth = () => {
 
       const data = await response.json();
 
-      if (response.ok && data.code === 200) {
+      // 注册接口按 REST 语义返回 201，不能把已经创建成功的账号显示成注册失败。
+      if (response.ok && (data.code === 200 || data.code === 201)) {
         if (isMountedRef.current) {
           setAuthState(prev => ({
             ...prev,
@@ -220,6 +231,10 @@ export const useUserAuth = () => {
    */
   const logout = useCallback(async (): Promise<void> => {
     if (!isMountedRef.current) return;
+    loginRequestIdRef.current++;
+    const token = userTokenManager.getToken();
+    // 先退出本地会话并取消页面任务，服务端登出较慢时也不能继续显示旧业务数据。
+    userTokenManager.clearToken();
 
     setAuthState(prev => ({
       ...prev,
@@ -227,7 +242,6 @@ export const useUserAuth = () => {
     }));
 
     try {
-      const token = userTokenManager.getToken();
       if (token) {
         // 调用登出API
         await fetch('/api/v1/user/logout', {
@@ -241,13 +255,11 @@ export const useUserAuth = () => {
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
-      // 无论API调用是否成功，都清除本地token
-      userTokenManager.clearToken();
-      
+      // 迟到的登出响应不能覆盖等待期间建立的新会话。
       if (isMountedRef.current) {
         setAuthState({
-          isAuthenticated: false,
-          user: null,
+          isAuthenticated: userTokenManager.isAuthenticated(),
+          user: userTokenManager.getUserInfo(),
           isLoading: false,
           error: null,
         });
@@ -302,13 +314,15 @@ export const useUserAuth = () => {
         },
       });
 
+      if ([401, 403].includes(response.status) && token === userTokenManager.getToken()) {
+        userTokenManager.clearToken();
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
-        if (data.code === 200 && isMountedRef.current) {
-          setAuthState(prev => ({
-            ...prev,
-            user: data.data,
-          }));
+        if (data.code === 200 && isMountedRef.current && token === userTokenManager.getToken()) {
+          userTokenManager.updateUserInfo(data.data);
         }
       }
     } catch (error) {

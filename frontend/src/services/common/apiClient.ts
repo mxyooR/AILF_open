@@ -3,6 +3,7 @@
  */
 
 import { API_BASE_URL } from '../../config/api';
+import { normalizeAmisResponse } from './amisTransport';
 
 export interface APIResponse<T = any> {
   code: number;
@@ -161,10 +162,16 @@ class APIClient {
 
       if (!response.ok) {
         throw new APIError(
-          data.message || '请求失败',
+          data.message || data.msg || data.detail || '请求失败',
           response.status,
           data.data?.error || 'UNKNOWN_ERROR'
         );
+      }
+
+      // 统一拦截 HTTP 200 中的业务失败，避免页面误删记录、清空表单或提示保存成功。
+      const result = normalizeAmisResponse(data);
+      if (result.status !== 0) {
+        throw new APIError(result.msg || '业务操作失败', result.status, data.data?.error || 'BUSINESS_ERROR');
       }
 
       return data;
@@ -254,27 +261,7 @@ export const apiClient = new APIClient();
 apiClient.setTokenRefreshCallback(async () => {
   // 动态导入避免循环依赖
   const { tokenManager } = await import('./tokenManager');
-  const tokenInfo = tokenManager.getTokenInfo();
-
-  if (tokenInfo?.refreshToken) {
-    try {
-      const { authAPI } = await import('../developer/authAPI');
-      const response = await authAPI.refreshToken({
-        refresh_token: tokenInfo.refreshToken,
-      });
-
-      if (response.code === 200) {
-        tokenManager.setToken(response.data);
-        return response.data.token;
-      }
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-    }
-  }
-
-  // 如果刷新失败，清除token
-  tokenManager.clearToken();
-  return null;
+  return tokenManager.refreshToken();
 });
 
 // 在开发环境中将apiClient暴露到window对象，便于调试

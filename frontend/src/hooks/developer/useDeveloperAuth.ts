@@ -18,9 +18,11 @@ export const useDeveloperAuth = () => {
     error: null,
   });
   const isMountedRef = useRef(true);
+  const authRequestIdRef = useRef(0);
 
   // 初始化认证状态和监听token变化
   useEffect(() => {
+    isMountedRef.current = true;
     // 从tokenManager获取当前认证状态
     const updateAuthState = () => {
       if (!isMountedRef.current) return;
@@ -51,6 +53,7 @@ export const useDeveloperAuth = () => {
     // 清理函数
     return () => {
       isMountedRef.current = false;
+      authRequestIdRef.current++;
       tokenManager.removeListener(handleTokenChange);
     };
   }, []);
@@ -58,6 +61,8 @@ export const useDeveloperAuth = () => {
   // 开发者认证
   const authenticate = useCallback(async (formData: AuthFormData) => {
     if (!isMountedRef.current) return { success: false, error: '组件已卸载' };
+    const requestId = ++authRequestIdRef.current;
+    const snapshot = tokenManager.getTokenInfo();
     
     setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
@@ -66,12 +71,17 @@ export const useDeveloperAuth = () => {
         password: formData.password,
       });
 
+      // 已取消、卸载或有较新的身份时，迟到的认证不能重新建立旧会话。
+      if (!isMountedRef.current || requestId !== authRequestIdRef.current || tokenManager.getTokenInfo() !== snapshot) {
+        return { success: false, error: '认证请求已失效' };
+      }
+
       // 使用tokenManager管理token
       tokenManager.setToken(response.data, {
         rememberMe: formData.rememberMe ?? true,
       });
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestId === authRequestIdRef.current) {
         setAuthState(prev => ({
           ...prev,
           isLoading: false,
@@ -85,7 +95,7 @@ export const useDeveloperAuth = () => {
         ? error.message
         : '认证失败，请重试';
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestId === authRequestIdRef.current && tokenManager.getTokenInfo() === snapshot) {
         setAuthState(prev => ({
           ...prev,
           isLoading: false,
@@ -99,23 +109,16 @@ export const useDeveloperAuth = () => {
 
   // 退出登录
   const logout = useCallback(async () => {
+    authRequestIdRef.current++;
+    const token = tokenManager.getToken();
+    // 立即清理本地状态；旧登出响应不再修改当前身份。
+    tokenManager.clearToken();
     try {
-      if (tokenManager.getToken()) {
-        await authAPI.logout();
+      if (token) {
+        await authAPI.logout(token);
       }
     } catch (error) {
       console.error('Developer logout API call failed:', error);
-    } finally {
-      tokenManager.clearToken();
-      if (isMountedRef.current) {
-        setAuthState(prev => ({
-          ...prev,
-          isAuthenticated: false,
-          token: null,
-          expiresAt: null,
-          error: null,
-        }));
-      }
     }
   }, []);
 

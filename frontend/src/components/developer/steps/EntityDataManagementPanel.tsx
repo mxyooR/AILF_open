@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, Table, Button, Space, Popconfirm, message, Tag, Tooltip, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { Entity, EntityField, EntityDataRecord } from '../../../types/developer/entity';
@@ -42,10 +42,17 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
   const [editingRecord, setEditingRecord] = useState<EntityDataRecord | null>(null);
   const [formLoading, setFormLoading] = useState(false);
 
+  const requestVersion = useRef(0);
+  const context = `${entity?.id || ''}:${visible}`;
+  const contextRef = useRef(context);
+  contextRef.current = context;
+
   // 获取记录列表
   const fetchRecords = useCallback(async (page: number = 1, limit: number = 10) => {
     if (!entity) return;
 
+    const version = ++requestVersion.current;
+    const current = () => version === requestVersion.current && contextRef.current === context;
     setLoading(true);
     try {
       const response = await entityAPI.getEntityData(entity.id, {
@@ -53,6 +60,7 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
         limit,
       });
 
+      if (!current()) return;
       if (response.code === 200) {
         setRecords(response.data.records);
         setPagination({
@@ -68,18 +76,21 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
       }
     } catch (error) {
       console.error('获取数据记录失败:', error);
-      message.error('获取数据记录失败');
+      if (current()) message.error('获取数据记录失败');
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [entity]);
+  }, [entity, context]);
 
 
   // 当面板打开或实体变化时加载数据
   useEffect(() => {
-    if (visible && entity) {
-      fetchRecords(1, pagination.limit);
-    }
+    setRecords([]);
+    setFormVisible(false);
+    setEditingRecord(null);
+    setFormLoading(false);
+    if (visible && entity) void fetchRecords(1, pagination.limit);
+    return () => { requestVersion.current += 1; };
   }, [visible, entity?.id]);
 
   // 处理创建记录
@@ -102,9 +113,10 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
 
     try {
       const response = await entityAPI.deleteEntityRecord(entity.id, recordId);
+      if (contextRef.current !== context) return;
       if (response.code === 200) {
         message.success('删除成功');
-        fetchRecords(pagination.page, pagination.limit);
+        void fetchRecords(records.length === 1 ? Math.max(1, pagination.page - 1) : pagination.page, pagination.limit);
       } else {
         message.error(response.message || '删除失败');
       }
@@ -122,6 +134,7 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
     try {
       if (formMode === 'create') {
         const response = await entityAPI.createEntityRecord(entity.id, data);
+        if (contextRef.current !== context) return;
         if (response.code === 201) {
           message.success('创建成功');
           setFormVisible(false);
@@ -131,6 +144,7 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
         }
       } else if (editingRecord) {
         const response = await entityAPI.updateEntityRecord(entity.id, editingRecord.id, data);
+        if (contextRef.current !== context) return;
         if (response.code === 200) {
           message.success('更新成功');
           setFormVisible(false);
@@ -141,9 +155,9 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
       }
     } catch (error: any) {
       console.error('提交失败:', error);
-      message.error(error.message || '操作失败');
+      if (contextRef.current === context) message.error(error.message || '操作失败');
     } finally {
-      setFormLoading(false);
+      if (contextRef.current === context) setFormLoading(false);
     }
   };
 
@@ -168,7 +182,7 @@ const EntityDataManagementPanel: React.FC<EntityDataManagementPanelProps> = ({
       render: (id: string) => (
         <Tooltip title={id}>
           <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-            {id.substring(0, 8)}...
+            {String(id).slice(0, 8)}…
           </span>
         </Tooltip>
       ),

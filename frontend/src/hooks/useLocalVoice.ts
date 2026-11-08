@@ -37,6 +37,7 @@ declare global {
 
 interface UseLocalVoiceReturn {
   isListening: boolean;
+  isTranscribing: boolean;
   transcript: string;
   isSupported: boolean;
   isSpeaking: boolean;
@@ -59,6 +60,12 @@ const WHISPER_MODEL = 'Xenova/whisper-tiny';
 export const useLocalVoice = (): UseLocalVoiceReturn => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mountedRef = useRef(true);
+  const captureVersion = useRef(0);
+  const startingRef = useRef(false);
+  const transcribingRef = useRef(false);
+  const finalTranscriptRef = useRef('');
   const [isSupported, setIsSupported] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [volume, setVolume] = useState(0);
@@ -83,6 +90,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
 
   // 检查浏览器支持
   useEffect(() => {
+    mountedRef.current = true;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     const hasSpeechSynthesis = !!window.speechSynthesis;
@@ -105,7 +113,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
         let finalTranscript = '';
         let interimTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           const text = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             finalTranscript += text;
@@ -114,7 +122,8 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
           }
         }
 
-        // 实时显示（临时结果带...，最终结果不带）
+        finalTranscriptRef.current = finalTranscript;
+        // 临时文字仅用于录音预览，结束时只提交真正的最终识别结果。
         if (finalTranscript) {
           setTranscript(finalTranscript);
         } else if (interimTranscript) {
@@ -124,6 +133,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
 
       recognition.onend = () => {
         console.log('[语音] Web Speech API 识别结束');
+        setTranscript(finalTranscriptRef.current);
         if (isListeningRef.current && recognitionMode === 'online') {
           // 如果用户没有手动停止，继续监听
           // 不自动重启，让用户手动控制
@@ -135,6 +145,11 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error('[语音] Web Speech API 错误:', event.error);
+        finalTranscriptRef.current = '';
+        setTranscript('');
+        isListeningRef.current = false;
+        setIsListening(false);
+        stopVolumeAnalysis();
         
         if (event.error === 'network') {
           console.log('[语音] 网络错误，将切换到本地 Whisper 模式');
@@ -162,12 +177,23 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
     }
 
     return () => {
+      // 页面关闭时释放录音与音量分析资源，且禁止迟到的模型/音频响应更新页面。
+      mountedRef.current = false;
+      captureVersion.current += 1;
+      isListeningRef.current = false;
       if (recognitionRef.current) {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
         recognitionRef.current.abort();
       }
-      if (synthRef.current) {
-        synthRef.current.cancel();
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
       }
+      stopVolumeAnalysis();
+      synthRef.current?.cancel();
     };
   }, []);
 
@@ -193,9 +219,13 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
   }, []);
 
   // 启动音量分析
-  const startVolumeAnalysis = async () => {
+  const startVolumeAnalysis = async (version: number) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current || version !== captureVersion.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return null;
+      }
       mediaStreamRef.current = stream;
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -235,7 +265,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
     }
 
     analyserRef.current = null;
-    setVolume(0);
+    if (mountedRef.current) setVolume(0);
   };
 
   // 将 Blob 转换为 Float32Array
@@ -244,10 +274,10 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: 16000
     });
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    const channelData = audioBuffer.getChannelData(0);
-    audioContext.close();
-    return channelData;
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      return audioBuffer.getChannelData(0);
+    } finally { await audioContext.close(); }
   };
 
   // 加载 Whisper 模型
@@ -271,12 +301,13 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
       
       console.log('[本地语音] 使用官方 Hugging Face CDN');
 
-      pipelineRef.current = await pipeline(
+      const loadedPipeline = await pipeline(
         'automatic-speech-recognition',
         WHISPER_MODEL,
         {
           quantized: true,
           progress_callback: (progress: any) => {
+            if (!mountedRef.current) return;
             if (progress.status === 'progress') {
               const percent = Math.round((progress.loaded / progress.total) * 100);
               setModelLoadProgress(percent);
@@ -288,9 +319,13 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
         }
       );
 
+      if (!mountedRef.current) { void loadedPipeline.dispose(); return; }
+      pipelineRef.current = loadedPipeline;
+
       setModelLoadProgress(100);
       console.log('[本地语音] Whisper 模型加载完成！');
     } catch (error: any) {
+      if (!mountedRef.current) return;
       console.error('[本地语音] 模型加载失败:', error);
       
       if (error.message?.includes('Unexpected token') || error.message?.includes('<!DOCTYPE')) {
@@ -302,7 +337,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
             request.onerror = () => reject(request.error);
           });
           const cacheKeys = await caches.keys();
-          await Promise.all(cacheKeys.map(key => caches.delete(key)));
+          await Promise.all(cacheKeys.filter(key => key.startsWith('transformers')).map(key => caches.delete(key)));
           setVoiceError('缓存已清除，请刷新页面重试');
         } catch (clearError) {
           setVoiceError('请手动清除浏览器缓存后重试');
@@ -311,32 +346,38 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
         setVoiceError(`模型加载失败: ${error.message}`);
       }
     } finally {
-      setIsModelLoading(false);
+      if (mountedRef.current) setIsModelLoading(false);
     }
   }, []);
 
   // 使用本地 Whisper 进行识别（一次性识别）
-  const startLocalRecognition = useCallback(async () => {
+  const startLocalRecognition = useCallback(async (version: number) => {
     console.log('[本地语音] 启动本地识别模式');
     setRecognitionMode('local');
     
     // 如果模型未加载，先加载
     if (!pipelineRef.current) {
       await loadModel();
+      if (!mountedRef.current || version !== captureVersion.current) return;
       if (!pipelineRef.current) {
         setVoiceError('模型加载失败，无法启动识别');
         return;
       }
     }
 
+    if (!mountedRef.current || version !== captureVersion.current) return;
     try {
       setVoiceError(null);
-      setTranscript('正在聆听...');
+      setTranscript('');
       audioChunksRef.current = [];
 
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true } 
       });
+      if (!mountedRef.current || version !== captureVersion.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       mediaStreamRef.current = stream;
 
       // 启动音量分析
@@ -348,10 +389,10 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
       analyzeVolume();
 
       // 创建 MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        .find(type => MediaRecorder.isTypeSupported(type));
       
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -361,9 +402,14 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
 
       mediaRecorderRef.current.onstop = async () => {
         console.log('[本地语音] 录音结束，开始一次性转录...');
-        setTranscript('正在识别...');
+        if (!mountedRef.current || version !== captureVersion.current) return;
+        transcribingRef.current = true;
+        setIsTranscribing(true);
+        setTranscript('');
         
         if (audioChunksRef.current.length === 0) {
+          transcribingRef.current = false;
+          setIsTranscribing(false);
           setTranscript('');
           return;
         }
@@ -372,7 +418,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
           const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
           const audioData = await blobToFloat32Array(audioBlob);
 
-          if (pipelineRef.current) {
+          if (pipelineRef.current && mountedRef.current && version === captureVersion.current) {
             const result = await pipelineRef.current(audioData, {
               language: 'chinese',
               task: 'transcribe',
@@ -380,6 +426,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
               stride_length_s: 5
             });
 
+            if (!mountedRef.current || version !== captureVersion.current) return;
             if (result && result.text) {
               const text = result.text.trim();
               setTranscript(text || '');
@@ -390,8 +437,13 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
           }
         } catch (error: any) {
           console.error('[本地语音] 转录失败:', error);
-          setVoiceError(`转录失败: ${error.message}`);
-          setTranscript('');
+          if (mountedRef.current && version === captureVersion.current) {
+            setVoiceError(`转录失败: ${error.message}`);
+            setTranscript('');
+          }
+        } finally {
+          transcribingRef.current = false;
+          if (mountedRef.current && version === captureVersion.current) setIsTranscribing(false);
         }
       };
 
@@ -400,63 +452,60 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
       setIsListening(true);
       console.log('[本地语音] 开始录音');
     } catch (error: any) {
+      stopVolumeAnalysis();
+      isListeningRef.current = false;
+      if (!mountedRef.current || version !== captureVersion.current) return;
+      setIsListening(false);
       console.error('[本地语音] 启动录音失败:', error);
       setVoiceError(error.name === 'NotAllowedError' ? '麦克风权限被拒绝' : `启动录音失败: ${error.message}`);
     }
   }, [loadModel, analyzeVolume]);
 
-  // 开始监听
+  // 异步申请权限/下载模型时也加锁，防止快速点击产生多个录音实例。
   const startListening = useCallback(async () => {
-    if (isListeningRef.current) return;
-    
+    if (isListeningRef.current || startingRef.current || transcribingRef.current) return;
+    const version = ++captureVersion.current;
+    startingRef.current = true;
+    finalTranscriptRef.current = '';
     setVoiceError(null);
     setTranscript('');
-
-    // 如果之前因为网络问题切换到了本地模式，直接使用本地模式
-    if (useLocalModeRef.current) {
-      await startLocalRecognition();
-      return;
-    }
-
-    // 首先尝试 Web Speech API
-    if (recognitionRef.current) {
-      try {
-        isListeningRef.current = true;
-        setIsListening(true);
-        setTranscript('正在聆听...');
-        
-        // 启动音量分析
-        await startVolumeAnalysis();
-        
-        // 启动 Web Speech API
-        recognitionRef.current.start();
-        console.log('[语音] 启动 Web Speech API');
-      } catch (error: any) {
-        console.error('[语音] 启动 Web Speech API 失败:', error);
-        
-        // 如果启动失败，切换到本地模式
-        if (error.message?.includes('already started')) {
-          // 已经在运行，忽略
-        } else {
-          useLocalModeRef.current = true;
-          await startLocalRecognition();
-        }
+    try {
+      if (useLocalModeRef.current || !recognitionRef.current) {
+        useLocalModeRef.current = true;
+        await startLocalRecognition(version);
+        return;
       }
-    } else {
-      // 浏览器不支持 Web Speech API，直接使用本地模式
-      useLocalModeRef.current = true;
-      await startLocalRecognition();
-    }
+      isListeningRef.current = true;
+      setIsListening(true);
+      const stream = await startVolumeAnalysis(version);
+      if (!mountedRef.current || version !== captureVersion.current) return;
+      if (!stream) {
+        isListeningRef.current = false;
+        setIsListening(false);
+        setVoiceError('无法访问麦克风，请检查浏览器权限');
+        return;
+      }
+      try {
+        recognitionRef.current.start();
+      } catch {
+        stopVolumeAnalysis();
+        isListeningRef.current = false;
+        setIsListening(false);
+        useLocalModeRef.current = true;
+        await startLocalRecognition(version);
+      }
+    } finally { startingRef.current = false; }
   }, [startLocalRecognition]);
 
   // 停止监听
   const stopListening = useCallback(() => {
     console.log('[语音] 停止监听');
+    if (startingRef.current) captureVersion.current += 1;
     isListeningRef.current = false;
     setIsListening(false);
 
     // 停止 Web Speech API
-    if (recognitionRef.current) {
+    if (recognitionRef.current && !useLocalModeRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (e) {
@@ -501,6 +550,7 @@ export const useLocalVoice = (): UseLocalVoiceReturn => {
 
   return {
     isListening,
+    isTranscribing,
     transcript,
     isSupported,
     isSpeaking,

@@ -5,6 +5,7 @@
 
 import { apiClient } from '../common/apiClient';
 import { normalizeAmisResponse } from './amisTransport';
+import { ensureFileResponse } from './fileResponse';
 import type { APIResponse } from '../../types/developer/route';
 
 export interface DynamicAPIOptions {
@@ -210,10 +211,12 @@ export class DynamicAPIService {
       });
 
       const data = await response.json();
+      const normalized = normalizeAmisResponse(data);
       const executionTime = Date.now() - startTime;
 
       return {
-        success: response.ok,
+        success: response.ok && normalized.status === 0,
+        error: response.ok && normalized.status === 0 ? undefined : normalized.msg || `文件上传失败 (${response.status})`,
         data,
         statusCode: response.status,
         executionTime
@@ -250,9 +253,7 @@ export class DynamicAPIService {
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`下载失败: ${response.status} ${response.statusText}`);
-      }
+      await ensureFileResponse(response);
 
       const blob = await response.blob();
       
