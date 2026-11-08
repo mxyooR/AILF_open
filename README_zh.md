@@ -26,7 +26,7 @@ AILF 将自然语言、业务 API、工作流和 [AMIS](https://github.com/baidu
 
 ## 先体验，再配置模型
 
-`/demo` 演示页完全在浏览器内运行：选择铁路出行、商品检索或门诊预约，生成 AMIS 表单，修改查询条件，完成示例选择，并查看对应 Schema。
+`/demo` 保留应用原有的 Siri 风格光球与流动极光背景。输入一句示例需求，或选择铁路出行、商品检索、门诊预约，即可打开 AMIS 界面，修改条件、完成选择并查看 Schema。也可使用浏览器的语音识别服务输入需求。
 
 **[打开在线演示 →](https://mxyooR.github.io/AILF_open/)** · [演示步骤](docs/DEMO.md)
 

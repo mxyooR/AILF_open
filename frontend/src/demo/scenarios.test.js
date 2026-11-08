@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { buildDemoSchema, handleDemoRequest, queryDemo, scenarios } from './scenarios';
+import { buildDemoSchema, handleDemoRequest, matchDemoScenario, queryDemo, scenarios } from './scenarios';
 
 test('changing a ticket search updates displayed route and fare without mutating fixtures', async () => {
   const scenario = scenarios[0];
@@ -37,4 +37,16 @@ test.each(scenarios)('$id provides a serializable AMIS form using local endpoint
   expect(schema.body.type).toBe('form');
   expect(schema.body.api.url).toBe(`demo://query/${scenario.id}`);
   expect(schema.body.data.items).toHaveLength(3);
+});
+
+test('typed or spoken example requests select their corresponding preset', () => {
+  scenarios.forEach(scenario => expect(matchDemoScenario(scenario.prompt)).toBe(scenario.id));
+  expect(matchDemoScenario('我想买票')).toBe('railway');
+  expect(matchDemoScenario('找个便携音箱')).toBe('commerce');
+  expect(matchDemoScenario('我要挂号')).toBe('hospital');
+});
+
+test('unsupported and empty requests do not pretend to generate a new business', () => {
+  expect(matchDemoScenario('')).toBeNull();
+  expect(matchDemoScenario('今天天气怎么样')).toBeNull();
 });

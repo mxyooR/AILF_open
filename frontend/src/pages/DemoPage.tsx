@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { render as renderAmis } from 'amis';
 import { buildDemoSchema, handleDemoRequest, scenarios, ScenarioId } from '../demo/scenarios';
 import './DemoPage.css';
+import DemoSiri from '../demo/DemoSiri';
 
 const REPO = 'https://github.com/mxyooR/AILF_open';
 const DemoPage: React.FC = () => {
@@ -11,6 +11,8 @@ const DemoPage: React.FC = () => {
   const [revision, setRevision] = useState(0);
   const [view, setView] = useState<'interface' | 'schema'>('interface');
   const [confirmed, setConfirmed] = useState('');
+  const [siriResultOpen, setSiriResultOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const scenario = scenarios.find(item => item.id === active)!;
   const selectedScenario = scenarios.find(item => item.id === selected)!;
   const schema = useMemo(() => buildDemoSchema(scenario), [scenario]);
@@ -24,31 +26,22 @@ const DemoPage: React.FC = () => {
     document.body.classList.add('demo-body');
     return () => { document.title = previousTitle; document.body.classList.remove('demo-body'); };
   }, []);
+  useEffect(() => {
+    if (!siriResultOpen) return;
+    dialogRef.current?.showModal();
+    const previousOverflow = document.body.style.overflow;
+    const previousPriority = document.body.style.getPropertyPriority('overflow');
+    document.body.style.setProperty('overflow', 'hidden', 'important');
+    return () => { document.body.style.setProperty('overflow', previousOverflow, previousPriority); };
+  }, [siriResultOpen]);
   function generate() { setActive(selected); setConfirmed(''); setView('interface'); setRevision(value => value + 1); }
+  function openSiriScenario(id: ScenarioId) { setSelected(id); setActive(id); setConfirmed(''); setView('interface'); setRevision(value => value + 1); setSiriResultOpen(true); }
+  function closeSiriResult() { dialogRef.current?.close(); setSiriResultOpen(false); }
   return (
     <div className="demo-page" id="demo-top">
       <a className="demo-skip" href="#playground">跳转到交互演示</a>
-      <header className="demo-nav">
-        <a className="demo-brand" href="#demo-top" aria-label="AILF 演示主页"><span className="demo-mark">a</span> AILF<span className="demo-edition">OPEN SOURCE</span></a>
-        <nav aria-label="主导航"><a href="#playground">交互演示</a><a href="#architecture">系统设计</a><a href={REPO} target="_blank" rel="noreferrer">GitHub ↗</a>{process.env.REACT_APP_DEMO_ONLY === 'true' ? <a className="demo-nav-launch" href={`${REPO}/blob/master/docs/DEPLOYMENT.md`} target="_blank" rel="noreferrer">部署完整应用 ↗</a> : <Link className="demo-nav-launch" to="/">进入应用 ↗</Link>}</nav>
-      </header>
       <main>
-        <section className="demo-hero">
-          <div className="demo-hero-copy">
-            <p className="demo-eyebrow"><span /> LANGUAGE IN. INTERFACE OUT.</p>
-            <h1>说出需求，<br />让<span>界面</span>接住。</h1>
-            <p className="demo-lead">从自然语言到业务操作。把意图识别、动态表单与工作流连接起来，让每一个需求都有可交互的下一步。</p>
-            <div className="demo-hero-actions"><a className="demo-primary" href="#playground">体验交互演示 <span>↓</span></a><a className="demo-text-link" href={`${REPO}#readme`} target="_blank" rel="noreferrer">阅读项目文档 ↗</a></div>
-            <p className="demo-hero-note">无需登录 · 无需 GPU · 内置合成示例</p>
-          </div>
-          <div className="demo-flow-art" aria-label="需求转化为业务界面的示意图">
-            <div className="demo-art-grid" />
-            <div className="demo-art-prompt"><span className="demo-mini-label">YOU SAY</span><p>“帮我查一下北京到上海的高铁。”</p><span className="demo-art-cursor">↵</span></div>
-            <div className="demo-art-connector"><span>意图 → 槽位 → Schema</span><i /></div>
-            <div className="demo-art-interface"><div className="demo-art-title"><span>↗</span> 你的下一程<span className="demo-art-ready">READY</span></div><div className="demo-art-cities"><b>北京<small>BEIJING</small></b><span>→</span><b>上海<small>SHANGHAI</small></b></div><div className="demo-art-ticket"><span><b>G101</b><small>07:00 → 12:38</small></span><span className="demo-art-seat">二等座 · 有余票</span><strong>选择 →</strong></div></div>
-            <span className="demo-art-caption">A UI THAT FOLLOWS YOUR INTENT.</span>
-          </div>
-        </section>
+        <DemoSiri onSelectScenario={openSiriScenario} />
         <div className="demo-stack-strip"><span>BUILT WITH</span><b>React + TypeScript</b><i /><b>AMIS</b><i /><b>FastAPI</b><i /><b>Celery + Redis</b><i /><b>Qwen3 + LoRA</b></div>
         <section id="playground" className="demo-playground">
           <div className="demo-section-heading"><div><p className="demo-eyebrow">01 / PLAYGROUND</p><h2>一句需求，一个操作入口。</h2></div><p>选择示例 → 生成界面 → 修改条件 → 完成选择</p></div>
@@ -65,7 +58,7 @@ const DemoPage: React.FC = () => {
               <div className="demo-result-toolbar"><div><span className="demo-live-dot" />{scenario.label}<span className="demo-synthetic">合成数据</span></div><div className="demo-view-switch" role="group" aria-label="预览视图"><button aria-pressed={view === 'interface'} onClick={() => setView('interface')}>业务界面</button><button aria-pressed={view === 'schema'} onClick={() => setView('schema')}>Schema</button></div></div>
               <div className="demo-result-heading"><span className="demo-mini-label">GENERATED WORKSPACE</span><h3>{scenario.label}工作台</h3><p>条件可修改，结果可操作。所有操作仅在当前页面生效。</p></div>
               {confirmed && <div className="demo-confirmation" role="status"><span>✓</span><div><b>已完成演示选择 · {confirmed}</b><p>这是一条本地演示记录，可重新生成界面再次体验。</p></div><button onClick={generate}>重置</button></div>}
-              {view === 'schema' ? <pre className="demo-schema" tabIndex={0} aria-label="生成的 AMIS Schema">{JSON.stringify(schema, null, 2)}</pre> : <div key={`${active}-${revision}`} className="demo-amis">{renderAmis(schema, {}, env)}</div>}
+              {!siriResultOpen && (view === 'schema' ? <pre className="demo-schema" tabIndex={0} aria-label="生成的 AMIS Schema">{JSON.stringify(schema, null, 2)}</pre> : <div key={`${active}-${revision}`} className="demo-amis">{renderAmis(schema, {}, env)}</div>)}
               <div className="demo-result-footer"><code>intent: {scenario.intent}</code><span>AMIS Schema → React UI</span></div>
             </div>
           </div>
@@ -79,6 +72,12 @@ const DemoPage: React.FC = () => {
           </div>
         </section>
       </main>
+      {siriResultOpen && <dialog ref={dialogRef} className="demo-siri-dialog" aria-labelledby="demo-siri-result-title" onCancel={event => { event.preventDefault(); closeSiriResult(); }}>
+        <header className="demo-siri-dialog-header"><div><h2 id="demo-siri-result-title">{scenario.label}工作台</h2><p>已为你打开内置示例，修改条件即可继续操作。</p></div><button type="button" className="demo-siri-close" onClick={closeSiriResult} aria-label="返回 Siri 界面">×</button></header>
+        <div className="demo-result-toolbar"><div><span className="demo-live-dot" />本地演示<span className="demo-synthetic">合成数据</span></div><div className="demo-view-switch" role="group" aria-label="预览视图"><button aria-pressed={view === 'interface'} onClick={() => setView('interface')}>业务界面</button><button aria-pressed={view === 'schema'} onClick={() => setView('schema')}>Schema</button></div></div>
+        {confirmed && <div className="demo-confirmation" role="status"><span>✓</span><div><b>已完成演示选择 · {confirmed}</b><p>仅记录当前页面的示例选择。</p></div><button onClick={generate}>重置</button></div>}
+        {view === 'schema' ? <pre className="demo-schema" tabIndex={0} aria-label="生成的 AMIS Schema">{JSON.stringify(schema, null, 2)}</pre> : <div className="demo-amis" key={`siri-${active}-${revision}`}>{renderAmis(schema, {}, env)}</div>}
+      </dialog>}
       <footer className="demo-footer"><div><b>AILF</b><span>AI Language Frontend</span></div><p>把需求变成可以操作的界面。</p><a href={`${REPO}/blob/master/LICENSE`} target="_blank" rel="noreferrer">Open source · MIT ↗</a></footer>
     </div>
   );

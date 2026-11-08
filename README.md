@@ -26,7 +26,7 @@ This repository is the public edition: application code, three business template
 
 ## See it before setting up a model
 
-The `/demo` playground runs entirely in the browser. Explore railway search, product search and appointments; change form conditions; select a result; inspect the generated AMIS Schema.
+The `/demo` playground opens with the application's original Siri-style orb and animated aurora background. Type an example request or choose a railway, product or appointment preset; edit its form, select a result and inspect the AMIS Schema. Optional speech input uses the browser's recognition service.
 
 **[Open the hosted playground →](https://mxyooR.github.io/AILF_open/)** · [Demo walkthrough](docs/DEMO.md)
 

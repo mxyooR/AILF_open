@@ -52,6 +52,16 @@ export const scenarios: DemoScenario[] = [
   }
 ];
 
+/** Selects a supported preset; this public playground does not run model inference. */
+export function matchDemoScenario(command: string): ScenarioId | null {
+  const keywords: [ScenarioId, RegExp][] = [
+    ['railway', /高铁|火车|车次|车票|买票|铁路/i],
+    ['commerce', /耳机|音箱|商品|购物|电商/i],
+    ['hospital', /门诊|医院|挂号|科室|预约|看病/i]
+  ];
+  return keywords.find(([, pattern]) => pattern.test(command.trim()))?.[0] || null;
+}
+
 export function queryDemo(scenario: DemoScenario, values: Record<string, unknown> = {}): DemoRow[] {
   const fields = Object.fromEntries(scenario.fields.map(field => [field.name, values[field.name] || field.value]));
   const rows = scenario.rows.map((row, index) => {

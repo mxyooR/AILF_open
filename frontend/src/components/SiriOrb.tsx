@@ -11,6 +11,7 @@ interface SiriOrbProps {
   isLoading?: boolean;
   disabled?: boolean;
   volume?: number; // 0-1 的音量值
+  ariaLabel?: string;
   onClick: () => void;
 }
 
@@ -19,6 +20,7 @@ const SiriOrb: React.FC<SiriOrbProps> = ({
   isLoading = false,
   disabled = false,
   volume = 0,
+  ariaLabel,
   onClick
 }) => {
   // 根据音量计算缩放比例：1.0 - 1.35（仅在监听时）
@@ -39,10 +41,11 @@ const SiriOrb: React.FC<SiriOrbProps> = ({
   return (
     <div className={`siri-orb-wrapper ${isListening ? 'listening' : ''} ${isLoading ? 'loading' : ''}`}>
       <button
+        type="button"
         className="siri-orb-button"
         onClick={onClick}
         disabled={disabled || isLoading}
-        aria-label={isLoading ? '模型加载中' : (isListening ? '停止录音' : '开始录音')}
+        aria-label={ariaLabel || (isLoading ? '模型加载中' : (isListening ? '停止录音' : '开始录音'))}
         style={dynamicStyle}
       >
         <SiriOrbDemo />
