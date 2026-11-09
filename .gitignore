@@ -188,6 +188,8 @@ temp/
 .kiro/
 .local/
 artifacts/
+# Local video production project; publish only the finished media in docs/assets.
+/promo-video/
 test-results/
 playwright-report/
 .playwright-mcp/

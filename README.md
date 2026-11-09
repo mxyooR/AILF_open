@@ -24,6 +24,14 @@ AILF connects natural language, configured business APIs and workflows, and [AMI
 
 This repository is the public edition: application code, three business templates, training examples and scripts, and adapter configuration. **Model weights, local credentials, databases and uploaded files are excluded.** It is an engineering prototype; measured accuracy, latency and production-scale reliability are not claimed.
 
+## AILF in 64 seconds
+
+[![Watch the AILF product film — language in, interface out](docs/assets/ailf-promo-cover.jpg)](docs/assets/ailf-promo.mp4)
+
+**[▶ Watch / download the product film](docs/assets/ailf-promo.mp4)** · 64 seconds · 1080p · 6.7 MB · Chinese narration and captions · [Subtitles](docs/assets/ailf-promo.zh.srt)
+
+The film shows the public playground, its workflow editor, and the full application's processing path. Business footage uses preset intents and synthetic data; narration is AI-generated.
+
 ## See it before setting up a model
 
 The `/demo` playground opens with the application's original Siri-style orb and animated aurora background. Type an example request or choose a railway, product or appointment preset; edit its form, select a result and inspect the AMIS Schema. Optional speech input uses the browser's recognition service.
